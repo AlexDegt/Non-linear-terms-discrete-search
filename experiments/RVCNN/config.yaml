@@ -1,0 +1,11 @@
+# Choose device to carry out simulations
+device: cuda:0
+# device: cpu
+
+# Choose number of chunks to divide whole signal into.
+# Hessian and gradient are accumulated on chunks. 
+# Algorithm step is made on base of accumulated hessian and gradient.
+# Whole signal length equals 170800 complex samples.
+# It is recommended to set number of chunks such that whole signal length is
+# divisible evenly by number of chunks for correct hessian and gradient accumulation.
+chunk_num: 1
