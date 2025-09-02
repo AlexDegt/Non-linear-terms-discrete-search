@@ -1,9 +1,9 @@
 import torch
 from torch import nn, Tensor
 from typing import List, Tuple, Union, Callable, Iterable
-from .algorithms import train_mixed_newton_damped, train_mixed_newton_levenb_marq, \
-                        train_sgd_auto, train_sgd_manual, train_newton_damped, \
-                        train_newton_levenb_marq, train_cubic_newton, train_cubic_newton_simplified
+from .algorithms import train_sgd_auto, train_mixed_newton_levenb_marq,train_ls, \
+        train_sgd_manual, train_mixed_newton_levenb_marq_manual
+import os
 
 OptionalInt = Union[int, None]
 OptionalStr = Union[str, None]
@@ -18,8 +18,7 @@ def train(model: nn.Module, train_dataset: DataLoaderType, loss_fn: LossFnType, 
           config_train: dict, batch_to_tensors: OptionalBatchTensor = None, validate_dataset: OptionalDataLoader = None, 
           test_dataset: OptionalDataLoader = None, train_type: OptionalStr = None,
           save_path: OptionalStr = None, exp_name: OptionalStr = None, save_every: OptionalInt = None, 
-          chunk_num: OptionalInt = None, weight_names: StrOrList = None, device: OptionalStr = None, 
-          jac_calc_strat: str = "reverse-mode", epochs: OptionalInt = None) -> None:
+          chunk_num: OptionalInt = None, weight_names: StrOrList = None, device: OptionalStr = None) -> None:
     """
     This function activates model training functions depending on the required training type.
 
@@ -47,10 +46,9 @@ def train(model: nn.Module, train_dataset: DataLoaderType, loss_fn: LossFnType, 
             Attention! Test dataset must have only 1 batch containing whole signal, the same as for validation dataset.
             Defaults is "None".
         train_type - flag, that shows which algorithm to exploit in training.
-            train_type == 'mnm_damped', - corresponds to Damped Mixed Newton Method,
-            train_type == 'mnm_lev_marq', - corresponds to Levenberg–Marquardt algorithm on base of Mixed Newton Method,
-            train_type == 'sgd_auto', - corresponds to Stochastic Gradient Descent, implemented by means of loss.backward() function.
-            train_type == 'sgd_manual', - corresponds to Stochastic Gradient Descent, implemented by means of pytorch jacobian function.
+            train_type == 'ols', - corresponds to Orthogonal Least Squares model optimization,
+            train_type == 'ppo', - corresponds to Proximal Policy Optimization RL algorithm,
+            train_type == 'ls', - simple Lease Squares for 1-layer linear model.
         save_path (str, optional): Folder path to save function product. Defaults to "None".
         exp_name (str, optional): Name of simulation, which is reflected in function product names. Defaults to "None".
         save_every (int, optional): The number which reflects following: the results would be saved every save_every epochs.
@@ -59,62 +57,29 @@ def train(model: nn.Module, train_dataset: DataLoaderType, loss_fn: LossFnType, 
         weight_names (str or list of str, optional): By spceifying `weight_names` it is possible to compute gradient only
             for several named parameters. Defaults to "None".
         device (str, optional): device to implement calculations: "cpu" or "cuda:0". Defaults is None.
-        epochs (int, optional): The number of algorithm iterations on full training dataset. Defaults to "None".
 
     Returns:
         Learning curve (list), containing quality criterion calculated each epoch of learning.
     """
-    if save_path is None:
-        save_path = ''
-    else:
-        save_path += '/'
     if exp_name is None:
         exp_name = ''
     else:
         exp_name = '_' + exp_name
 
     if train_type is None:
-        train_type = 'sgd_auto'
+        train_type = 'ls'
 
     best_criterion = None
-    learning_curve = []
 
     save_signals = True
     
-    torch.save(model.state_dict(), save_path+'weights_init'+exp_name)
+    torch.save(model.state_dict(), os.path.join(save_path, 'weights_init.pt'))
 
-    if train_type == 'sgd_auto':
-        learning_curve, best_criterion = train_sgd_auto(model, train_dataset, validate_dataset, test_dataset, loss_fn, 
-                                                        quality_criterion, batch_to_tensors, config_train, save_path, exp_name,
-                                                        save_every, epochs)
-    elif train_type == 'sgd_manual':
-        learning_curve, best_criterion = train_sgd_manual(model, train_dataset, validate_dataset, test_dataset, loss_fn, 
-                                                          quality_criterion, batch_to_tensors, save_path, exp_name, save_every, 
-                                                          save_signals, weight_names, epochs)
-    elif train_type == 'mnm_damped':
-        learning_curve, best_criterion = train_mixed_newton_damped(model, train_dataset, validate_dataset, test_dataset, loss_fn, 
-                                                                   quality_criterion, batch_to_tensors, chunk_num, 
-                                                                   save_path, exp_name, save_every, save_signals, weight_names, jac_calc_strat, epochs)
-    elif train_type == 'mnm_lev_marq':
-        learning_curve, best_criterion = train_mixed_newton_levenb_marq(model, train_dataset, validate_dataset, test_dataset, loss_fn, 
+    if train_type == 'ls':
+        learning_curve, best_criterion = train_ls(model, train_dataset, validate_dataset, test_dataset, loss_fn, 
                                                                         quality_criterion, batch_to_tensors, chunk_num, 
-                                                                        save_path, exp_name, save_every, save_signals, weight_names, jac_calc_strat, epochs)
-    elif train_type == 'newton_damped':
-        learning_curve, best_criterion = train_newton_damped(model, train_dataset, validate_dataset, test_dataset, loss_fn, 
-                                                                   quality_criterion, batch_to_tensors, chunk_num, 
-                                                                   save_path, exp_name, save_every, save_signals, weight_names, jac_calc_strat, epochs)
-    elif train_type == 'newton_lev_marq':
-        learning_curve, best_criterion = train_newton_levenb_marq(model, train_dataset, validate_dataset, test_dataset, loss_fn, 
-                                                                        quality_criterion, batch_to_tensors, chunk_num, 
-                                                                        save_path, exp_name, save_every, save_signals, weight_names, jac_calc_strat, epochs)
-    elif train_type == 'cubic_newton':
-        learning_curve, best_criterion = train_cubic_newton(model, train_dataset, validate_dataset, test_dataset, loss_fn, 
-                                                                   quality_criterion, batch_to_tensors, chunk_num, 
-                                                                   save_path, exp_name, save_every, save_signals, weight_names, jac_calc_strat, epochs)
-    elif train_type == 'cubic_newton_simple':
-        learning_curve, best_criterion = train_cubic_newton_simplified(model, train_dataset, validate_dataset, test_dataset, loss_fn, 
-                                                                        quality_criterion, batch_to_tensors, chunk_num, 
-                                                                        save_path, exp_name, save_every, save_signals, weight_names, jac_calc_strat, epochs)
+                                                                        save_path, exp_name, weight_names)
+
     else:
-        print(f"Attention! Training type \'{train_type}\' doesn`t match any of the possible types.")
+        print(f"Attention! Training type \'{train_type}\' doesn`t match any of the possible types: \'sgd\', \'mnm\'.")
     return learning_curve, best_criterion
