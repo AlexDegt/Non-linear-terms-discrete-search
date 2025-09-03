@@ -1,6 +1,6 @@
 import sys
 
-sys.path.append('../../')
+sys.path.append('../')
 import os 
 
 import torch
@@ -8,7 +8,7 @@ import random
 import numpy as np
 from oracle import count_parameters
 from trainer import train
-from utils import dynamic_dataset_prepare
+from utils import dataset_prepare
 from scipy.io import loadmat
 from scipy.signal import get_window, welch
 from model import ParallelCheby2D
