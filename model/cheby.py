@@ -13,11 +13,13 @@ class ParallelCheby2D(nn.Module):
     """
         Class represent 2-dimensional non-linearity based on Chebyshev polynomials
     """
-    def __init__ (self, order, delays, dtype=torch.complex128, device='cuda:0'):
+    def __init__ (self, order, delays, channel='A', dtype=torch.complex128, device='cuda:0'):
         super(ParallelCheby2D, self).__init__()
         
         self.dtype = dtype
         self.device = device
+        # Channel to compensate distortion
+        self.channel = channel
         # Must be list of 2 ints or 1 int
         self.order = order
         delays_input = [delays_branch[1:] for delays_branch in delays]
@@ -30,7 +32,12 @@ class ParallelCheby2D(nn.Module):
             self.cells.append(Cheby2D(order, dtype, device))
     
     def forward(self, x):
-        x_in = self.delay_out(x[:, :1, :])
+        if self.channel == 'A':
+            x_in = self.delay_out(x[:, :1, :])
+        elif self.channel == 'B':
+            x_in = self.delay_out(x[:, 1:2, :])
+        else:
+            raise ValueError(f"Parameter channel must be either \'A\' or \'B\', but {self.channel} is given")
         x_curr = self.delay_inp(x)
         output = sum([x_in[:, j_branch, ...] * cell(x_curr[:, j_branch, ...]) for j_branch, cell in enumerate(self.cells)])
         return output[..., self.trans_len if self.trans_len > 0 else None: -self.trans_len if self.trans_len > 0 else None]

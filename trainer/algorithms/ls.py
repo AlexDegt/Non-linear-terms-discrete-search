@@ -101,7 +101,7 @@ def train_ls(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
         # Combination of all batches on train dataset should be equal validation dataset
         for j, batch in enumerate(train_dataset):
 
-            delta_hess, delta_grad = SICOracle.direction_through_jacobian(batch, batch_to_tensors, weight_names=weight_names)
+            delta_hess, delta_grad = SICOracle.direction_through_jacobian(batch, batch_to_tensors, weight_names=weight_names)#, strategy="forward-mode", vectorize=True)
 
             with torch.no_grad():
                 if j == 0:
@@ -115,7 +115,7 @@ def train_ls(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
         hess_cond = torch.linalg.cond(hess).item()
 
         hess += reg * torch.eye(grad.numel(), dtype=hess.dtype, device=hess.device)
-        np.save(os.path.join(save_path, "hess.npy"), hess.detach().cpu().numpy())
+        # np.save(os.path.join(save_path, "hess.npy"), hess.detach().cpu().numpy())
 
         # Implement LS-step
         hess_inv = torch.linalg.pinv(hess, rcond=1e-18, hermitian=True)

@@ -22,7 +22,7 @@ with open(config_path, "r") as file:
 
 # Simulation parameters
 param_num = config["param_num"]
-delay_num = config["delay_num"]
+delays = config["delays"]
 batch_size = config["batch_size"]
 chunk_num = config["chunk_num"]
 
@@ -53,9 +53,8 @@ os.makedirs(save_path, exist_ok=config["overwrite_file"])
 # Save config file in experiment folder
 shutil.copyfile(config_path, os.path.join(save_path, "config.yaml"))
 
-# Model initialization
+# Model initializations
 order = param_num
-delays = [[j, j, j] for j in range(-delay_num, delay_num + 1)]
 # Define data type
 dtype = getattr(torch, config["dtype"])
 # Indices of slots which are chosen to be included in train/test set (must be of a range type).

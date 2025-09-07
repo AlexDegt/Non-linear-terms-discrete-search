@@ -1,1 +1,1 @@
-from .cheby import ChebyPoly2D
+from .cheby import ParallelCheby2D

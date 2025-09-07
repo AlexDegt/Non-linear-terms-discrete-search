@@ -11,10 +11,9 @@ trial_name: ls_zero_delays
 param_num: [6, 6]
 # Model is parallel Chebyshev polynomials, summed at the output
 # Each polynomail is fed by the signals x_n, delayd by delay
-# from the range [-delay_num, delay_num].
-delay_num: 3 # 10
+delays: [[-1, -1, -1], [-2, -2, -2], [-3, -3, -3], [0, 0, 0], [1, 1, 1], [2, 2, 2], [3, 3, 3]]
 batch_size: 1
-# Whole signal length 213504
+# Whole signal length 213504, half 106752
 block_size: 106752
 # chunk_num is important parameter, which allows to divide whole signal
 # into chunk_num blocks. LS method is implemented to accumulate 
@@ -22,12 +21,12 @@ block_size: 106752
 # Increase this parameter if you obtain out of memory error.
 chunk_num: 1
 dtype: complex128
-device: "cuda:1"
+device: "cuda:2"
 # dtype: complex64
 # Path to the folder with data
 data_path: '../data/data2d.mat'
 # Channel to compensate: A or B
-channel: A
+channel: B
 # Allow to overwrite folder with saved results or not
 overwrite_file: True
 

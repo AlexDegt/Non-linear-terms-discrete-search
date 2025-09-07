@@ -1,8 +1,7 @@
 import torch
 from torch import nn, Tensor
 from typing import List, Tuple, Union, Callable, Iterable
-from .algorithms import train_sgd_auto, train_mixed_newton_levenb_marq,train_ls, \
-        train_sgd_manual, train_mixed_newton_levenb_marq_manual
+from .algorithms import train_ls
 import os
 
 OptionalInt = Union[int, None]

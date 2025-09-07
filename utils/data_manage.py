@@ -38,21 +38,22 @@ class ResampleDataset(torch.utils.data.Dataset):
     def __len__(self) -> int:
         return self.batch_num
 
-def dataset_prepare(mat: dict, dtype: torch.dtype = torch.complex128, device: str = 'cuda', batch_size: OptionalInt = None, 
+def dataset_prepare(data_path: str, dtype: torch.dtype = torch.complex128, device: str = 'cuda', batch_size: OptionalInt = None, 
                     block_size: OptionalInt = None, slot_num: OptionalInt = None, pad_zeros: OptionalInt = None, 
                     delay_d: OptionalInt = None, train_slots_ind: range = range(1), validat_slots_ind: range = range(1),
-                    test_slots_ind: range = range(1)) -> DatasetType:
+                    test_slots_ind: range = range(1), channel: str = 'A') -> DatasetType:
     """
     The method extracts input and target data for the mat file, normalizes and resamples if necessary.
     Then it divides input and target tensors into the batches and loads them into the dataloader.
 
     Args:
-        mat (Dictionary): mat-file, which contains:
+        data_path (str): path to mat-file, which contains:
             input (numpy.ndarray): 1d array with shape (1, arr.shape), which contains input data samples.
             target (numpy.ndarray): 1d array with shape (1, arr.shape), which contains target data samples.
             noise_floor (numpy.ndarray): 1d array with shape (1, arr.shape), which contains noise floor samples.
         dtype (torch.dtype): The type of tensor to convert content of the mat-file to. Defaults is torch.complex128.
         device (str): The device to load dataset to. Defaults is 'cpu'.
+        block_size (int, optional): length of chunks to divide whole signal into. Defaults to None.
         slot_num (int, optional): The number of slots to divide the whole dataset into.
         pad_zeros (int, optional): The number of zeros to add to the beginning and to the end of the signal.
         delay_d (int, optional): The value of desired and noise floor signals shift. delay_d > 0 corresponds to
@@ -62,7 +63,8 @@ def dataset_prepare(mat: dict, dtype: torch.dtype = torch.complex128, device: st
         validat_slots_ind (range): Used only for hold-out cross-validation. Indices of the slots which are chosen for validation dataset. 
             A range with step 1. Defaults is range(1).
         test_slots_ind (range): Indices of the slots which are chosen for training dataset. A range with step 1. Defaults is range(1).
-            
+        channel (str): Channel to compensate non-linear distortion. Defaults to 'A'.
+
     Returns:
         Tuple of iterables.
     """
@@ -72,6 +74,8 @@ def dataset_prepare(mat: dict, dtype: torch.dtype = torch.complex128, device: st
 
     if batch_size is None:
         batch_size = 1
+
+    mat = loadmat(data_path)
 
     input_a = mat['PDinA'][0, :]
     input_b = mat['PDinB'][0, :]
@@ -89,20 +93,18 @@ def dataset_prepare(mat: dict, dtype: torch.dtype = torch.complex128, device: st
     input = torch.cat((input_tens_a, input_tens_b), dim=1)
     target_tens_a = torch.tensor(target_a, dtype=dtype).view(1, 1, -1).to(device)
     target_tens_b = torch.tensor(target_b, dtype=dtype).view(1, 1, -1).to(device)
-    target = torch.cat((target_tens_a, target_tens_b), dim=1)
+    
+    if channel == 'A':
+        target = target_tens_a
+    elif channel == 'B':
+        target = target_tens_b
+    else:
+        raise ValueError(f"Parameter \'channel\' must be either \'A\' or \'B\', but \'{channel}\' is given.")
+    
     nf = torch.tensor(nf, dtype=dtype).view(1, 1, -1).to(device)
 
-    input = input/30000
-    target = target/30000
-    # alpha = 0.9#/30000
-    # scale_input_a = input[:, :1, :].abs().max()
-    # scale_input_b = input[:, 1:, :].abs().max()
-    # input[:, :1, :] = alpha * (input[:, :1, :].to(device) / scale_input_a)
-    # input[:, 1:, :] = alpha * (input[:, 1:, :].to(device) / scale_input_b)
-    # scale_target_a = target[:, :1, :].abs().max()
-    # scale_target_b = target[:, 1:, :].abs().max()
-    # target[:, :1, :] = alpha * (target[:, :1, :].to(device) / scale_target_a)
-    # target[:, 1:, :] = alpha * (target[:, 1:, :].to(device) / scale_target_b)
+    input /= input.abs().max()
+    target /= target.abs().max()
 
     assert (np.array(train_slots_ind) < slot_num).all() and (np.array(train_slots_ind) >= 0).all(), \
         "All train slots indices (argument train_slots_ind) must be positive and lower, than number of slots (argument slot_num)."
