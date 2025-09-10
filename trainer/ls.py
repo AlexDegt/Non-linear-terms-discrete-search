@@ -17,7 +17,7 @@ LossFnType = Union[Callable[[nn.Module, Tensor], Tensor], Callable[[nn.Module, T
 BatchTensorType = Callable[[Tensor], Tuple[Tensor, ...]]
 
 def train_ls(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: DataLoaderType, 
-                                   test_dataset: DataLoaderType, loss_fn: LossFnType, quality_criterion: LossFnType, 
+                                   test_dataset: DataLoaderType, loss_fn: LossFnType, quality_criterion: LossFnType, config: dict,
                                    batch_to_tensors: BatchTensorType, chunk_num: OptionalInt = None, 
                                    save_path: OptionalStr = None, exp_name: OptionalStr = None, weight_names: StrOrList = None):
     """
@@ -49,6 +49,7 @@ def train_ls(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
         quality_criterion (Callable): The function used to compute model quality. Takes nn.Module and tuple of two Tensor
                 instances. Returns differentiable Tensor scalar. quality_criterion is not used in the model differentiation
                 process, but it`s only used to estimate model quality in more reasonable units comparing to the loss_fn.
+        config (dict): Content of config file in a view if dictionary.
         batch_to_tensors (Callable): Function which acquires signal batch as an input and returns tuple of tensors, where
             the first tensor corresponds to model input, the second one - to the target signal. This function is used to
             obtain differentiable model output tensor to calculate jacobian.

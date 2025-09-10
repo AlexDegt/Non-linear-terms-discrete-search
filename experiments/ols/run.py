@@ -1,13 +1,13 @@
 import sys
 
-sys.path.append('../')
+sys.path.append('../../')
 import os 
 
 import torch
 import random
 import numpy as np
 from oracle import count_parameters
-from trainer import train
+from trainer import train_ols
 from utils import dataset_prepare
 from scipy.io import loadmat
 from model import ParallelCheby2D
@@ -22,7 +22,9 @@ with open(config_path, "r") as file:
 
 # Simulation parameters
 param_num = config["param_num"]
-delays = config["delays"]
+delays_range = config["delays_range"]
+delays_range[1] += 1
+iter_num = config["iter_num"]
 batch_size = config["batch_size"]
 chunk_num = config["chunk_num"]
 
@@ -71,9 +73,7 @@ alpha = 0.0
 # Configuration file
 config_train = None
 # Input signal is padded with pad_zeros zeros at the beginning and ending of input signal.
-# Since each 1d convolution in model CVCNN makes zero-padding with int(kernel_size/2) left and right, then 
-# NO additional padding in the input batches is required.
-trans_len = int(len(delays) // 2)
+trans_len = max(abs(np.arange(*delays_range)))
 pad_zeros = trans_len
 # Channel to compensate: A or B
 channel = config["channel"]
@@ -97,6 +97,11 @@ def batch_to_tensors(a):
     x = a[0]
     d = a[1][:, :1, :]
     return x, d
+
+def tensors_to_batch(batch, x, d):
+    batch[0] = x.clone()
+    batch[1][:, :1, :] = d.clone()
+    return batch
 
 def complex_mse_loss(d, y, model):
     error = (d - y)#[..., trans_len if trans_len > 0 else None: -trans_len if trans_len > 0 else None]
@@ -133,7 +138,9 @@ def get_nested_attr(module, names):
             return
     return module
 
-model = ParallelCheby2D(order, delays, channel, dtype, device)
+# Initialize delays with zeros, since they would be chosen later
+delays = [[0, 0, 0]]
+model = ParallelCheby2D(order, delays, channel, dtype, device, trans_len)
 
 model.to(device)
 
@@ -145,13 +152,6 @@ print(f"Current model parameters number is {count_parameters(model)}")
 # params = [(name, p.size(), p.dtype) for name, p in model.named_parameters()]
 # print(params)
 
-# Train type shows which algorithm is used for optimization.
-# train_type='ls' # LS method: 1 Mixed-Newton step
-# train_type='ols' Orthogonal Least Squares
-# train_type='ppo' # Proximal Policy Optimization
-train_type = config["train_type"]
-learning_curve, best_criterion = train(model, train_dataset, loss, quality_criterion, config, batch_to_tensors, validate_dataset, test_dataset, 
-                                        train_type=train_type, chunk_num=chunk_num, exp_name=exp_name, save_every=1, save_path=save_path, 
-                                        weight_names=weight_names, device=device)
-
-print(f"Best NMSE: {best_criterion} dB")
+best_delays = train_ols(model, train_dataset, train_dataset, train_dataset, loss, quality_criterion, config, batch_to_tensors,
+                                        tensors_to_batch, chunk_num=chunk_num, save_path=save_path, exp_name=exp_name,
+                                        weight_names=weight_names, delays_range=delays_range, iter_num=iter_num)

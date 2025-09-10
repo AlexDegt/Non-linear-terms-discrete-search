@@ -21,10 +21,10 @@ block_size: 106752
 # Increase this parameter if you obtain out of memory error.
 chunk_num: 1
 dtype: complex128
-device: "cuda:2"
+device: "cuda:3"
 # dtype: complex64
 # Path to the folder with data
-data_path: '../data/data2d.mat'
+data_path: '../../data/data2d.mat'
 # Channel to compensate: A or B
 channel: B
 # Allow to overwrite folder with saved results or not

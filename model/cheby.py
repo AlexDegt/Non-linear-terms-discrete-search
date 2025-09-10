@@ -13,7 +13,7 @@ class ParallelCheby2D(nn.Module):
     """
         Class represent 2-dimensional non-linearity based on Chebyshev polynomials
     """
-    def __init__ (self, order, delays, channel='A', dtype=torch.complex128, device='cuda:0'):
+    def __init__ (self, order, delays, channel='A', dtype=torch.complex128, device='cuda:0', trans_len=0):
         super(ParallelCheby2D, self).__init__()
         
         self.dtype = dtype
@@ -27,7 +27,7 @@ class ParallelCheby2D(nn.Module):
         self.delay_inp = Delay(delays_input, dtype, device)
         self.delay_out = Delay(delays_output, dtype, device)
         self.cells = nn.ModuleList()
-        self.trans_len = int(len(delays) // 2)
+        self.trans_len = trans_len
         for i in range(len(delays)):
             self.cells.append(Cheby2D(order, dtype, device))
     
@@ -68,3 +68,9 @@ class ParallelCheby2D(nn.Module):
             numel = cell.weight.numel()
             cell.weight.copy_(flat_params[offset:offset + numel].view_as(cell.weight))
             offset += numel
+
+    def set_delays(self, delays):
+        delays_input = [delays_branch[1:] for delays_branch in delays]
+        delays_output = [delays_branch[:1] for delays_branch in delays]
+        self.delay_inp = Delay(delays_input, self.dtype, self.device)
+        self.delay_out = Delay(delays_output, self.dtype, self.device)

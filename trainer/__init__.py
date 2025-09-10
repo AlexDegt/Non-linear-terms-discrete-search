@@ -1,1 +1,2 @@
-from .train_choose import train
+from .ls import train_ls
+from .ols import train_ols
