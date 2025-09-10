@@ -21,13 +21,13 @@ DataLoaderType = torch.utils.data.dataloader.DataLoader
 LossFnType = Union[Callable[[nn.Module, Tensor], Tensor], Callable[[nn.Module, Tuple[Tensor, ...]], Tensor]]
 BatchTensorType = Callable[[Tensor], Tuple[Tensor, ...]]
 
-def train_ols(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: DataLoaderType, 
+def train_ppo(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: DataLoaderType, 
                                    test_dataset: DataLoaderType, loss_fn: LossFnType, quality_criterion: LossFnType, config: dict,
                                    batch_to_tensors: BatchTensorType, tensors_to_batch: BatchTensorType, chunk_num: OptionalInt = None, 
                                    save_path: OptionalStr = None, exp_name: OptionalStr = None, weight_names: StrOrList = None,
                                    delays_range: OptionalList = None, iter_num: OptionalInt = None):
     """
-    Function implements Orthogonal Least Squares (OLS) algorithm for delays search. 
+    Function implements Proximal Policy Optimization algorithm for optimal delays search.
 
     Args:
         model (nn.Module): The model with differentiable parameters.
@@ -65,6 +65,7 @@ def train_ols(model: nn.Module, train_dataset: DataLoaderType, validate_dataset:
         Learning curve (list), containing quality criterion calculated each epoch of learning.
     """
 
+    sys.exit()
     general_timer = Timer()
     general_timer.__enter__()
 
