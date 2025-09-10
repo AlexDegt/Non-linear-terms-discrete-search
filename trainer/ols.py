@@ -125,7 +125,7 @@ def train_ols(model: nn.Module, train_dataset: DataLoaderType, validate_dataset:
         print(f"Iter {j_iter}. Begin to implement OLS error projection step:")
         # Step 1:
         for j, batch in enumerate(train_dataset):
-            jac = SICOracle.jacobian(batch, batch_to_tensors, weight_names=weight_names)
+            jac = SICOracle.jacobian(batch, batch_to_tensors)
             jac_H = torch.conj(torch.permute(jac, (0, 2, 1)))
             residual = batch_to_tensors(batch)[1]
             if j == 0:
@@ -141,7 +141,7 @@ def train_ols(model: nn.Module, train_dataset: DataLoaderType, validate_dataset:
         direction = torch.bmm(hess_inv, grad)
         # Step 2:
         for j, batch in enumerate(train_dataset):
-            jac = SICOracle.jacobian(batch, batch_to_tensors, weight_names=weight_names)
+            jac = SICOracle.jacobian(batch, batch_to_tensors)
             delta_residual = torch.bmm(jac, direction)
             residual = batch_to_tensors(batch)[1]
             inp = batch_to_tensors(batch)[0]
@@ -150,8 +150,7 @@ def train_ols(model: nn.Module, train_dataset: DataLoaderType, validate_dataset:
                 np.save(os.path.join(save_path, f"residual_{0}.npy"), residual.detach().cpu().numpy()[0, 0, :])
             residual -= torch.permute(delta_residual, (0, 2, 1))
             tensors_to_batch(batch, inp, residual)
-            np.save(os.path.join(save_path, f"hess_inv_{j_iter + 1}.npy"), hess_inv.detach().cpu().numpy()[0, ...])
-            np.save(os.path.join(save_path, f"grad_{j_iter + 1}.npy"), grad.detach().cpu().numpy()[0, :, 0])
+            np.save(os.path.join(save_path, f"jac_{j_iter + 1}.npy"), jac[0, ...].detach().cpu().numpy())
             np.save(os.path.join(save_path, f"delta_residual_{j_iter + 1}.npy"), torch.permute(delta_residual, (0, 2, 1)).detach().cpu().numpy()[0, 0, :])
             np.save(os.path.join(save_path, f"residual_{j_iter + 1}.npy"), residual.detach().cpu().numpy()[0, 0, :])
         proj_timer.__exit__()

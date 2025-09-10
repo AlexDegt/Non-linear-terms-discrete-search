@@ -70,7 +70,15 @@ class ParallelCheby2D(nn.Module):
             offset += numel
 
     def set_delays(self, delays):
+        """
+            Function loads delays to the model.
+            Pay attention! Since new delays imply structure modification, then
+            model parameters are re-initialized.
+        """
         delays_input = [delays_branch[1:] for delays_branch in delays]
         delays_output = [delays_branch[:1] for delays_branch in delays]
         self.delay_inp = Delay(delays_input, self.dtype, self.device)
         self.delay_out = Delay(delays_output, self.dtype, self.device)
+        self.cells = nn.ModuleList()
+        for i in range(len(delays)):
+            self.cells.append(Cheby2D(self.order, self.dtype, self.device))

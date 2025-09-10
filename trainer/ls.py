@@ -119,7 +119,7 @@ def train_ls(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
         # np.save(os.path.join(save_path, "hess.npy"), hess.detach().cpu().numpy())
 
         # Implement LS-step
-        hess_inv = torch.linalg.pinv(hess, rcond=1e-18, hermitian=True)
+        hess_inv = torch.linalg.pinv(hess, rcond=1e-15, hermitian=True)
         direction = -1. * hess_inv @ grad
         x = SICOracle.get_flat_params(name_list=weight_names)
         SICOracle.set_flat_params(x + direction, name_list=weight_names)
