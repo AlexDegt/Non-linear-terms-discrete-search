@@ -146,13 +146,13 @@ def train_ols(model: nn.Module, train_dataset: DataLoaderType, validate_dataset:
             residual = batch_to_tensors(batch)[1]
             inp = batch_to_tensors(batch)[0]
             # Update residual vector (desired) in training dataset
-            if j_iter == 0:
-                np.save(os.path.join(save_path, f"residual_{0}.npy"), residual.detach().cpu().numpy()[0, 0, :])
+            # if j_iter == 0:
+            #     np.save(os.path.join(save_path, f"residual_{0}.npy"), residual.detach().cpu().numpy()[0, 0, :])
             residual -= torch.permute(delta_residual, (0, 2, 1))
             tensors_to_batch(batch, inp, residual)
-            np.save(os.path.join(save_path, f"jac_{j_iter + 1}.npy"), jac[0, ...].detach().cpu().numpy())
-            np.save(os.path.join(save_path, f"delta_residual_{j_iter + 1}.npy"), torch.permute(delta_residual, (0, 2, 1)).detach().cpu().numpy()[0, 0, :])
-            np.save(os.path.join(save_path, f"residual_{j_iter + 1}.npy"), residual.detach().cpu().numpy()[0, 0, :])
+            # np.save(os.path.join(save_path, f"jac_{j_iter + 1}.npy"), jac[0, ...].detach().cpu().numpy())
+            # np.save(os.path.join(save_path, f"delta_residual_{j_iter + 1}.npy"), torch.permute(delta_residual, (0, 2, 1)).detach().cpu().numpy()[0, 0, :])
+            # np.save(os.path.join(save_path, f"residual_{j_iter + 1}.npy"), residual.detach().cpu().numpy()[0, 0, :])
         proj_timer.__exit__()
         print(f"Iter {j_iter}. Projection finished, time elapsed {proj_timer.interval} s")
         
