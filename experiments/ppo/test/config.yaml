@@ -30,8 +30,11 @@ channel: A
 overwrite_file: True
 
 # Parameters of environment
-brunch_number: 3 # delays_number = brunch_number * 3 for 2D model
+brunch_number: 1 # delays_number = brunch_number * 3 for 2D model
 delays_range: [-15, 15] # Range of delays search
 max_delay_step: 1 # Max step value per single agent move
-delays2change_num: 5 # Maximum number of delays to change per single agent move
+delays2change_num: 1 # Maximum number of delays to change per single agent move
 max_steps: 1000 # Maximum number of PPO steps
+# Normalization of state and reward parameters
+state_alpha: 0.005
+reward_alpha: 0.005

@@ -13,7 +13,7 @@ sys.path.append('../../')
 
 from utils import Timer
 from oracle import Oracle
-from .rl_tools import PerformanceEnv
+from .rl_tools import PerformanceEnv, TrajectoryNormalizeWrapper
 
 OptionalInt = Union[int, None]
 OptionalStr = Union[str, None]
@@ -92,8 +92,23 @@ def train_ppo(model: nn.Module, train_dataset: DataLoaderType, validate_dataset:
 
     env = PerformanceEnv(model, delays_number, delays_range, max_delay_step, delays2change_num, max_steps, train_tomb_raider)
 
-    action = env.action_space.sample()
-    env.step(action)
+    # Normalization state and reward parameters
+    state_alpha = config["state_alpha"]
+    reward_alpha = config["reward_alpha"]
+
+    env = TrajectoryNormalizeWrapper(env)
+    # Better to make normalization at the end of episode
+    state, info = env.reset(seed=0, zero_start=True)
+
+    for _ in range(10):
+        action = env.action_space.sample()
+        state, reward, terminated, truncated, info = env.step(action)
+        print(state, reward)
+
+    states, rewards = env.normalize_trajectory()
+
+    for st, rew in zip(states, rewards):
+        print(st, rew)
 
     # action = env.action_space.sample()
     # state = env.state_space.sample()

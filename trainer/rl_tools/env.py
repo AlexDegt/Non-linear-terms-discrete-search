@@ -100,7 +100,7 @@ class PerformanceEnv(gym.Env):
         """
         super().reset(seed=seed)
         if zero_start:
-            self.state = np.zeros((self.__delays_number,)).tolist()
+            self.state = np.zeros((self.__delays_number,), dtype=int).tolist()
         else:
             self.state = self.state_space.sample()
         return self.state, {}
@@ -123,9 +123,6 @@ class PerformanceEnv(gym.Env):
         if self.step_curr == self.max_steps:
             truncated = True
 
-        print(f"Current state: {self.state}")
-        print(f"Action: {action}")
-
         for action_pair in action:
             delay_ind, delay_step = action_pair
             self.state[delay_ind] += delay_step
@@ -133,7 +130,6 @@ class PerformanceEnv(gym.Env):
             self.state = np.clip(self.state, self.state_space.low, self.state_space.high)
    
         assert self.state_space.contains(self.state), f"Chosen state is out of state space."
-        print(f"State after step: {self.state}")
 
         # Reshape delays according to their position in branches
         delays = np.array(self.state).reshape(-1, self.__delays_in_branch).tolist()
@@ -148,9 +144,6 @@ class PerformanceEnv(gym.Env):
         # Reward design...
         reward = 10 ** (-1 * perform_db / 10)
 
-        print(perform_db)
-        print(reward)
-
         return self.state, reward, terminated, truncated, {}
 
     def render(self):
@@ -158,3 +151,95 @@ class PerformanceEnv(gym.Env):
 
     def close(self):
         pass
+
+class NormalizeWrapper(gym.Wrapper):
+    """
+        Object for states and rewards normaliation by running mean and std:
+        mean_t = mean_{t-1} + alpha * (o_t - mean_{t-1})
+        std_t^2 = std_{t-1}^2 + alpha * ((o_t - mean_{t-1}) - std_{t-1}^2)
+
+        Better to set alpha ~ 0.01 when environment is static,
+        better to set alpha 0.5-0.9 when environment is highly dynamic.
+    """
+    def __init__(self, env, state_alpha=0.01, reward_alpha=0.01, epsilon=1e-8):
+        super().__init__(env)
+        
+        # Normalization for state
+        self.state_mean = np.zeros(env.state_space.shape, dtype=np.float32)
+        self.state_var = np.ones(env.state_space.shape, dtype=np.float32)
+        self.state_alpha = state_alpha
+        self.epsilon = epsilon
+        
+        # Normalization for reward
+        self.reward_mean = 0.0
+        self.reward_var = 1.0
+        self.reward_alpha = reward_alpha
+
+    def _normalize_state(self, state):
+        # Recalculate statement w.r.t. running normalization
+        delta = state - self.state_mean
+        self.state_mean += self.state_alpha * delta
+        self.state_var += self.state_alpha * (delta**2 - self.state_var)
+        
+        normalized_state = (state - self.state_mean) / np.sqrt(self.state_var + self.epsilon)
+        return normalized_state
+
+    def _normalize_reward(self, reward):
+        # Recalculate reward w.r.t. running normalization
+        delta = reward - self.reward_mean
+        self.reward_mean += self.reward_alpha * delta
+        self.reward_var += self.reward_alpha * (delta**2 - self.reward_var)
+        
+        normalized_reward = (reward - self.reward_mean) / np.sqrt(self.reward_var + self.epsilon)
+        return normalized_reward
+    
+    def reset(self, **kwargs):
+        state, info = self.env.reset(**kwargs)
+        return self._normalize_state(state), info
+    
+    def step(self, action):
+        state, reward, terminated, truncated, info = self.env.step(action)
+        return self._normalize_state(state), self._normalize_reward(reward), terminated, truncated, info
+
+    def get_normalized_state(self):
+        return self._normalize_state(self.env.state)
+
+    def get_normalized_reward(self, reward):
+        return self._normalize_reward(reward)
+
+class TrajectoryNormalizeWrapper(gym.Wrapper):
+    """
+        Object for normaization of states and rewards for the
+        whole trajectory. Since distribution of rewards in environment
+        is static, then better to apply normalization at the end of each episode.
+    """
+    def __init__(self, env, epsilon=1.e-8):
+        super().__init__(env)
+        self.states = []
+        self.rewards = []
+        self.epsilon = epsilon
+
+    def reset(self, **kwargs):
+        self.states = []
+        self.rewards = []
+        state, info = self.env.reset(**kwargs)
+        self.states.append(state)
+        return state, info
+
+    def step(self, action):
+        state, reward, terminated, truncated, info = self.env.step(action)
+        self.states.append(state)
+        self.rewards.append(reward)
+        return state, reward, terminated, truncated, info
+
+    def normalize_trajectory(self):
+        states = np.array(self.states, dtype=np.float32)
+        rewards = np.array(self.rewards, dtype=np.float32)
+        states_mean = states.mean()
+        states_std = states.std() + self.epsilon
+        rewards_mean = rewards.mean()
+        rewards_std = rewards.std() + self.epsilon
+
+        norm_states = (states - states_mean) / states_std
+        norm_rewards = (rewards - rewards_mean) / rewards_std
+        return norm_states, norm_rewards
