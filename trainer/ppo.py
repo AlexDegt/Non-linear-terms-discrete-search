@@ -11,8 +11,9 @@ from .ls import train_ls
 import sys, os
 sys.path.append('../../')
 
-from utils import Timer, PerformanceEnv
+from utils import Timer
 from oracle import Oracle
+from .rl_tools import PerformanceEnv
 
 OptionalInt = Union[int, None]
 OptionalStr = Union[str, None]

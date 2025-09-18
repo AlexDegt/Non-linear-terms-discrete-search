@@ -3,4 +3,3 @@ from .metrics import NMSE, nmse
 from .timer import Timer
 from .data_manage import dataset_prepare, ResampleDataset
 from .device_info import dump_device_info
-from .rl_utils import PerformanceEnv
