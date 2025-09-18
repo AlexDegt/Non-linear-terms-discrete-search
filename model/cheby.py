@@ -18,6 +18,7 @@ class ParallelCheby2D(nn.Module):
         
         self.dtype = dtype
         self.device = device
+        self.delays = delays
         # Channel to compensate distortion
         self.channel = channel
         # Must be list of 2 ints or 1 int
@@ -79,6 +80,7 @@ class ParallelCheby2D(nn.Module):
         delays_output = [delays_branch[:1] for delays_branch in delays]
         self.delay_inp = Delay(delays_input, self.dtype, self.device)
         self.delay_out = Delay(delays_output, self.dtype, self.device)
+        self.delays = delays
         self.cells = nn.ModuleList()
         for i in range(len(delays)):
             self.cells.append(Cheby2D(self.order, self.dtype, self.device))

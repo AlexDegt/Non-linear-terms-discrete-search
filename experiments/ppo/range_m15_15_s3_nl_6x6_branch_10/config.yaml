@@ -2,13 +2,18 @@
 trial_descript: Training of 1D Chebyshev polynomial-based model
 # If trial_name == 'None', then name to the experiment is given automatically,
 # otherwise it is set name set by user 
-trial_name: test
+# trial_name: range_m15_15_s1
+trial_name: range_m15_15_s3_nl_6x6_branch_10
+# trial_name: range_m6_6_s3
 
 # trial_name: sgd_full_grad_adam_10k_epochs_4_pow_dim_mu_1e_3_stand_tx
 # trial_name: test
 # Simulation parameters
 # Chebyshev polynomal order
 param_num: [6, 6]
+# Specifies range of possible delays to be chosen for the input signal.
+# List includes [first, last, step] possible delays
+delays_range: [-15, 15, 3]
 # Number of OLS iterations. Each new iteration corresponds to 1 new model branch.
 iter_num: 10
 batch_size: 1
@@ -28,10 +33,3 @@ data_path: '../../data/data2d.mat'
 channel: A
 # Allow to overwrite folder with saved results or not
 overwrite_file: True
-
-# Parameters of environment
-brunch_number: 3 # delays_number = brunch_number * 3 for 2D model
-delays_range: [-15, 15] # Range of delays search
-max_delay_step: 1 # Max step value per single agent move
-delays2change_num: 5 # Maximum number of delays to change per single agent move
-max_steps: 1000 # Maximum number of PPO steps

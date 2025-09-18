@@ -4,13 +4,14 @@ from typing import Tuple, Union, Callable, List
 import numpy as np
 
 import itertools
+from functools import partial
 
 from .ls import train_ls
 
 import sys, os
 sys.path.append('../../')
 
-from utils import Timer
+from utils import Timer, PerformanceEnv
 from oracle import Oracle
 
 OptionalInt = Union[int, None]
@@ -64,16 +65,11 @@ def train_ppo(model: nn.Module, train_dataset: DataLoaderType, validate_dataset:
     Returns:
         Learning curve (list), containing quality criterion calculated each epoch of learning.
     """
-
-    sys.exit()
     general_timer = Timer()
     general_timer.__enter__()
 
-    # Initialize Mixed-Newton oracle
-    SICOracle = Oracle(model, loss_fn)
-
     if delays_range is None:
-        delays_range = [-15, 15, 3]
+        delays_range = [-15, 15, 1]
 
     comb_delays = list(itertools.combinations_with_replacement(np.arange(*delays_range), 3))
     
@@ -81,82 +77,29 @@ def train_ppo(model: nn.Module, train_dataset: DataLoaderType, validate_dataset:
     np.save(os.path.join(save_path, "comb_delays.npy"), np.array(comb_delays))
 
     best_inds, best_delays = [], []
-    # Initial terms matrix
-    terms = []
-    for batch in train_dataset:
-        terms.append(torch.tensor([], device=model.device, dtype=model.dtype))
-    # Iterations of OLS algorithm
-    for j_iter in range(iter_num):
-
-        # Apply LS for each delays combination and find the best one    
-        timer_ls = Timer()
-        timer_ls.__enter__()
-        
-        print(f"Iter {j_iter}. Start to calculating LS for all {len(comb_delays)} delays combinations:")
-        delays_perform = []
-        for j_delay_set, delay_set in enumerate(comb_delays):
-            timer_single_ls = Timer()
-            timer_single_ls.__enter__()
-            model.set_delays([list(delay_set)])
-            _, best_criterion = train_ls(model, train_dataset, train_dataset, train_dataset, loss_fn, 
+    
+    # Environment parameters
+    delays_number = sum([len(delay_set) for delay_set in model.delays])
+    delays_range = config["delays_range"]
+    max_delay_step = config["max_delay_step"]
+    delays2change_num = config["delays2change_num"]
+    max_steps = config["max_steps"]
+    # Function to calculate MSE reward
+    train_tomb_raider = partial(train_ls, model, train_dataset, train_dataset, train_dataset, loss_fn, 
                                         quality_criterion, config, batch_to_tensors, chunk_num, 
                                         save_path, exp_name, weight_names)
-            delays_perform.append(best_criterion)
-            # np.save(os.path.join(save_path, f"delays_perform_iter_{j_iter + 1}.npy"), np.array(delays_perform))
-            timer_single_ls.__exit__()
-            print(f"Calculated {j_delay_set + 1} of {len(comb_delays)} delays combs. Elapsed {timer_single_ls.interval:.3f} s.")
-        
-        timer_ls.__exit__()
-        print(f"Iter {j_iter}. Totally elapsed {timer_ls.interval:.3f} s per all {len(comb_delays)} delays combinations.")
-            
-        best_inds.append(np.argmin(delays_perform))
-        curr_best_delays = comb_delays[best_inds[-1]]
-        best_delays.append(list(curr_best_delays))
-        # Save best delays combinations
-        np.save(os.path.join(save_path, "best_delays.npy"), np.array(best_delays))
-        
-        # Set best delays to the model and calculate term matrix (jacobian)
-        # Pay attention, that whole terms matrix is constructed every step once again!
-        # Such approach alows to save memory by division whole signal into batches.
-        SICOracle._model.set_delays(best_delays)
 
-        # Calculate projector in 2 steps (loops)
-        proj_timer = Timer()
-        proj_timer.__enter__()
-        print(f"Iter {j_iter}. Begin to implement OLS error projection step:")
-        # Step 1:
-        for j, batch in enumerate(train_dataset):
-            jac = SICOracle.jacobian(batch, batch_to_tensors)
-            jac_H = torch.conj(torch.permute(jac, (0, 2, 1)))
-            residual = batch_to_tensors(batch)[1]
-            if j == 0:
-                hess = torch.bmm(jac_H, jac)
-                grad = torch.bmm(jac_H, torch.permute(residual, (0, 2, 1)))
-            else:
-                hess += torch.bmm(jac_H, jac)
-                grad += torch.bmm(jac_H, torch.permute(residual, (0, 2, 1)))
-        hess_inv = []
-        for i in range(hess.size()[0]):
-            hess_inv.append(torch.linalg.pinv(hess[i, ...], rcond=1e-15, hermitian=True)[None, ...])
-        hess_inv = torch.cat(hess_inv, dim=0)
-        direction = torch.bmm(hess_inv, grad)
-        # Step 2:
-        for j, batch in enumerate(train_dataset):
-            jac = SICOracle.jacobian(batch, batch_to_tensors)
-            delta_residual = torch.bmm(jac, direction)
-            residual = batch_to_tensors(batch)[1]
-            inp = batch_to_tensors(batch)[0]
-            # Update residual vector (desired) in training dataset
-            # if j_iter == 0:
-            #     np.save(os.path.join(save_path, f"residual_{0}.npy"), residual.detach().cpu().numpy()[0, 0, :])
-            residual -= torch.permute(delta_residual, (0, 2, 1))
-            tensors_to_batch(batch, inp, residual)
-            # np.save(os.path.join(save_path, f"jac_{j_iter + 1}.npy"), jac[0, ...].detach().cpu().numpy())
-            # np.save(os.path.join(save_path, f"delta_residual_{j_iter + 1}.npy"), torch.permute(delta_residual, (0, 2, 1)).detach().cpu().numpy()[0, 0, :])
-            # np.save(os.path.join(save_path, f"residual_{j_iter + 1}.npy"), residual.detach().cpu().numpy()[0, 0, :])
-        proj_timer.__exit__()
-        print(f"Iter {j_iter}. Projection finished, time elapsed {proj_timer.interval} s")
-        
+    env = PerformanceEnv(model, delays_number, delays_range, max_delay_step, delays2change_num, max_steps, train_tomb_raider)
+
+    action = env.action_space.sample()
+    env.step(action)
+
+    # action = env.action_space.sample()
+    # state = env.state_space.sample()
+
+    # print(f"action sample: {action}")
+    # print(f"state sample: {state}")
+
     general_timer.__exit__()
     print(f"Total time elapsed: {general_timer.interval} s")
 

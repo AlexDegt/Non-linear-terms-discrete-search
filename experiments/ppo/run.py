@@ -139,7 +139,8 @@ def get_nested_attr(module, names):
     return module
 
 # Initialize delays with zeros, since they would be chosen later
-delays = [[0, 0, 0]]
+brunch_number = config["brunch_number"]
+delays = [[0, 0, 0] for _ in range(brunch_number)]
 model = ParallelCheby2D(order, delays, channel, dtype, device, trans_len)
 
 model.to(device)

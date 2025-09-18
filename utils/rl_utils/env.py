@@ -1,0 +1,160 @@
+import gymnasium as gym
+from gymnasium import spaces
+import numpy as np
+import torch.nn as nn
+
+from contextlib import contextmanager
+
+from typing import List, Tuple, Union, Callable, Iterable
+
+import sys
+
+RangeType = List[int]
+
+@contextmanager
+def no_print():
+    import sys, io
+    saved_stdout = sys.stdout
+    sys.stdout = io.StringIO()
+    try:
+        yield
+    finally:
+        sys.stdout = saved_stdout
+
+class IntRangeSpace(gym.Space):
+    """
+        Auxiliary object to create sample delays in range [low, high]
+    """
+    def __init__(self, low, high):
+        super().__init__(shape=(), dtype=np.int32)
+        self.low = low
+        self.high = high
+
+    def sample(self):
+        return np.random.randint(self.low, self.high + 1)
+
+    def contains(self, x):
+        return self.low <= x <= self.high
+
+class PerformanceEnv(gym.Env):
+    """
+        Current environment is designed to check RL algorithm performance
+        for signal processing model hyperparameter optimization task.
+        
+        Environment state is model input delays.
+        Agent step is a change input delays. It includes indices of delays
+            to perform step, step value [-step_max, step_max]. The number of 
+            delays to be changed at current step is regulated by parameter delays2change_num.
+        Reward for agent steps is represented by MSE (Mean Square Error) of model for chosen delays set.
+
+        Agent provides strategy for current environment, recalculates delays and finds MSE reward.
+
+        Args:
+            tomb_raider (torch.nn.Module): The signal processing model, which hyperparameters are implied to be optimized.
+            delays_number (int): Required number of delays in model.
+            delays_range (list of ints): List, whice inludes minimum and maximum delays possible to set.
+            max_delay_step (int): Maximum value of delay step, which can be performed by an agent.
+            delays2change_num (int): Number of delays, which required to be changed per each step.
+            max_steps (int): Maximum number of steps in each episode.
+            train_tomb_raider (partial function): Pointer to the function with fixed parameters.
+    """
+    def __init__(self, tomb_raider: nn.Module, delays_number: int, delays_range: RangeType, max_delay_step: int, delays2change_num: int, max_steps: int,
+                 train_tomb_raider):
+        super(PerformanceEnv, self).__init__()
+
+        assert len(delays_range) == 2 and all([type(delay) == int for delay in delays_range]), "Delays range must include 2 integers."
+        assert 0 < delays2change_num <= delays_number, "Number of delays to be changed per each step must higher than 0 and not higher than number of delays."
+
+        # Save environment parameters
+        self.__delays_number = delays_number
+        self.__delays_range = delays_range
+        self.__max_delay_step = max_delay_step
+        self.__delays2change_num = delays2change_num
+        self.__train_tomb_raider = train_tomb_raider
+        self.__tomb_raider = tomb_raider
+        # Number of delays in each branch. For 2D model it equals 3
+        self.__delays_in_branch = len(self.__tomb_raider.delays[0])
+
+        # Definition of state (observation) space
+        self.state_space = spaces.Box(low=delays_range[0], high=delays_range[1] - 1, shape=(delays_number,), dtype=int)
+
+        # Definition of action spaces
+        single_pair_space = spaces.Tuple((
+            spaces.Discrete(delays_number - 1),       # Index of delay to be changed
+            IntRangeSpace(-max_delay_step, max_delay_step)      # delays step -max_delay_step..max_delay_step
+        ))
+        self.action_space = spaces.Tuple([single_pair_space for _ in range(delays2change_num)])
+        
+        # Internal state
+        self.state = np.zeros(delays_number, dtype=int).tolist()
+        self.step_curr = 1 # Current step number
+        self.max_steps = max_steps
+
+    def reset(self, seed=None, zero_start=False):
+        """
+            Resets environment
+            
+            Args:
+                seed (int): random seed.
+                zero_start (bool): If True starts from zero delays, else, start from random in state space.
+        """
+        super().reset(seed=seed)
+        if zero_start:
+            self.state = np.zeros((self.__delays_number,)).tolist()
+        else:
+            self.state = self.state_space.sample()
+        return self.state, {}
+
+    def step(self, action):
+        """
+            Makes agent step in the environment.
+            For each pair in action tuple chenges delays (state).
+            Updated delays are put into the optimized model. Then reward (MSE) is calculated.
+
+            Returns:
+                Tuple, which includes new state, reward for the step, flags terminated, truncated and um info, if needed.
+                    truncated is True, is maximum number of steps is achieved,
+                    terminated is always False, since agent can walk in the environment without limits.
+        """
+        assert self.action_space.contains(action), f"Chosen action is out of action space."
+
+        terminated = False
+        truncated = False
+        if self.step_curr == self.max_steps:
+            truncated = True
+
+        print(f"Current state: {self.state}")
+        print(f"Action: {action}")
+
+        for action_pair in action:
+            delay_ind, delay_step = action_pair
+            self.state[delay_ind] += delay_step
+            # Clip state if its out of range after step
+            self.state = np.clip(self.state, self.state_space.low, self.state_space.high)
+   
+        assert self.state_space.contains(self.state), f"Chosen state is out of state space."
+        print(f"State after step: {self.state}")
+
+        # Reshape delays according to their position in branches
+        delays = np.array(self.state).reshape(-1, self.__delays_in_branch).tolist()
+
+        # Load delays in model
+        self.__tomb_raider.set_delays(delays)
+
+        # Train tomb raider in a search of high performance!
+        with no_print():
+            _, perform_db = self.__train_tomb_raider()
+
+        # Reward design...
+        reward = 10 ** (-1 * perform_db / 10)
+
+        print(perform_db)
+        print(reward)
+
+        return self.state, reward, terminated, truncated, {}
+
+    def render(self):
+        print("State:", self.state)
+
+    def close(self):
+        pass
