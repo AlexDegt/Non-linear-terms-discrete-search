@@ -223,7 +223,7 @@ class TrajectoryNormalizeWrapper(gym.Wrapper):
         self.states = []
         self.rewards = []
         state, info = self.env.reset(**kwargs)
-        self.states.append(state)
+        # self.states.append(state)
         return state, info
 
     def step(self, action):
@@ -243,3 +243,6 @@ class TrajectoryNormalizeWrapper(gym.Wrapper):
         norm_states = (states - states_mean) / states_std
         norm_rewards = (rewards - rewards_mean) / rewards_std
         return norm_states, norm_rewards
+
+    def __getattr__(self, name):
+        return getattr(self.env, name)

@@ -20,7 +20,7 @@ block_size: 106752
 # Increase this parameter if you obtain out of memory error.
 chunk_num: 1
 dtype: complex128
-device: "cuda:5"
+device: "cuda:4"
 # dtype: complex64
 # Path to the folder with data
 data_path: '../../data/data2d.mat'

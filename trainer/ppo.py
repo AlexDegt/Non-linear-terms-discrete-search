@@ -14,6 +14,7 @@ sys.path.append('../../')
 from utils import Timer
 from oracle import Oracle
 from .rl_tools import PerformanceEnv, TrajectoryNormalizeWrapper
+from .rl_tools import CNNSharedBackPolicy
 
 OptionalInt = Union[int, None]
 OptionalStr = Union[str, None]
@@ -100,18 +101,53 @@ def train_ppo(model: nn.Module, train_dataset: DataLoaderType, validate_dataset:
     # Better to make normalization at the end of episode
     state, info = env.reset(seed=0, zero_start=True)
 
-    for _ in range(10):
+    # states = []
+    for _ in range(60):
         action = env.action_space.sample()
         state, reward, terminated, truncated, info = env.step(action)
-        print(state, reward)
+        # states.append(state)
+        # print(state, reward)
 
+    # states = np.array(states)
     states, rewards = env.normalize_trajectory()
 
-    for st, rew in zip(states, rewards):
-        print(st, rew)
+    print(states.shape)
+
+    states = torch.tensor(states).to(model.device)
+    states_batched = states.view((2, 3, -1))
+
+    print(states_batched.size())
+
+    # for st, rew in zip(states, rewards):
+    #     print(st, rew)
 
     # action = env.action_space.sample()
     # state = env.state_space.sample()
+
+    state_dim = len(state)
+    delays_steps_num = 2 * max_delay_step + 1
+    hidden_shared_size=4
+    hidden_shared_num=2
+    kernel_shared_size=3
+    hidden_separ_size=4
+    hidden_separ_num=2
+    kernel_separ_size=3
+
+    agent = CNNSharedBackPolicy(state_dim, delays2change_num, delays_steps_num,
+                                hidden_shared_size, hidden_shared_num, kernel_shared_size,
+                                hidden_separ_size, hidden_separ_num, kernel_separ_size)
+    agent.to(model.device)
+
+    agent.count_parameters()
+
+    policy, value = agent(states_batched)
+
+    print(len(policy))
+    for d in policy:
+        print(d.probs.size())
+        print(d.probs[0, 0, :].sum())
+
+    print(value.size())
 
     # print(f"action sample: {action}")
     # print(f"state sample: {state}")
