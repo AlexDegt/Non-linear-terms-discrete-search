@@ -1,2 +1,2 @@
 from .env import PerformanceEnv, NormalizeWrapper, TrajectoryNormalizeWrapper
-from .policy import CNNSharedBackPolicy
+from .policy import Policy, CNNSharedBackPolicy

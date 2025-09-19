@@ -14,7 +14,7 @@ sys.path.append('../../')
 from utils import Timer
 from oracle import Oracle
 from .rl_tools import PerformanceEnv, TrajectoryNormalizeWrapper
-from .rl_tools import CNNSharedBackPolicy
+from .rl_tools import CNNSharedBackPolicy, Policy
 
 OptionalInt = Union[int, None]
 OptionalStr = Union[str, None]
@@ -105,21 +105,8 @@ def train_ppo(model: nn.Module, train_dataset: DataLoaderType, validate_dataset:
     for _ in range(60):
         action = env.action_space.sample()
         state, reward, terminated, truncated, info = env.step(action)
-        # states.append(state)
-        # print(state, reward)
-
     # states = np.array(states)
     states, rewards = env.normalize_trajectory()
-
-    print(states.shape)
-
-    states = torch.tensor(states).to(model.device)
-    states_batched = states.view((2, 3, -1))
-
-    print(states_batched.size())
-
-    # for st, rew in zip(states, rewards):
-    #     print(st, rew)
 
     # action = env.action_space.sample()
     # state = env.state_space.sample()
@@ -135,22 +122,16 @@ def train_ppo(model: nn.Module, train_dataset: DataLoaderType, validate_dataset:
 
     agent = CNNSharedBackPolicy(state_dim, delays2change_num, delays_steps_num,
                                 hidden_shared_size, hidden_shared_num, kernel_shared_size,
-                                hidden_separ_size, hidden_separ_num, kernel_separ_size)
-    agent.to(model.device)
+                                hidden_separ_size, hidden_separ_num, kernel_separ_size,
+                                model.device)
 
     agent.count_parameters()
 
-    policy, value = agent(states_batched)
+    # policy, value = agent(states_batched)
 
-    print(len(policy))
-    for d in policy:
-        print(d.probs.size())
-        print(d.probs[0, 0, :].sum())
+    policy = Policy(agent)
 
-    print(value.size())
-
-    # print(f"action sample: {action}")
-    # print(f"state sample: {state}")
+    policy.act(states)
 
     general_timer.__exit__()
     print(f"Total time elapsed: {general_timer.interval} s")
