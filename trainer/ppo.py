@@ -16,6 +16,7 @@ from utils import Timer
 from oracle import Oracle
 from .rl_tools import PerformanceEnv, NormalizeWrapper, TrajectoryNormalizeWrapper, EnvRunner
 from .rl_tools import CNNSharedBackPolicy, MLPSharedBackPolicy, Policy
+from .rl_tools import GAE
 
 OptionalInt = Union[int, None]
 OptionalStr = Union[str, None]
@@ -152,7 +153,13 @@ def train_ppo(model: nn.Module, train_dataset: DataLoaderType, validate_dataset:
     runner = EnvRunner(env, policy, 30)
     trajectory = runner.get_next()
 
-    print(trajectory)
+    # print(trajectory)
+
+    gae = GAE(policy)
+
+    gae(trajectory)
+
+    print(trajectory["advantages"])
 
     # {k: v.shape for k, v in trajectory.items() if k != "state"}
 
