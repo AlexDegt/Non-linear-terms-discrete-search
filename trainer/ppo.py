@@ -5,6 +5,7 @@ import numpy as np
 
 import itertools
 from functools import partial
+from collections import defaultdict
 
 from .ls import train_ls
 
@@ -13,8 +14,8 @@ sys.path.append('../../')
 
 from utils import Timer
 from oracle import Oracle
-from .rl_tools import PerformanceEnv, TrajectoryNormalizeWrapper
-from .rl_tools import CNNSharedBackPolicy, Policy
+from .rl_tools import PerformanceEnv, NormalizeWrapper, TrajectoryNormalizeWrapper, EnvRunner
+from .rl_tools import CNNSharedBackPolicy, MLPSharedBackPolicy, Policy
 
 OptionalInt = Union[int, None]
 OptionalStr = Union[str, None]
@@ -97,21 +98,32 @@ def train_ppo(model: nn.Module, train_dataset: DataLoaderType, validate_dataset:
     state_alpha = config["state_alpha"]
     reward_alpha = config["reward_alpha"]
 
-    env = TrajectoryNormalizeWrapper(env)
+    # env = TrajectoryNormalizeWrapper(env)
+    env = NormalizeWrapper(env)
     # Better to make normalization at the end of episode
-    state, info = env.reset(seed=0, zero_start=True)
+    # state, info = env.reset(seed=0, zero_start=True)
 
-    # states = []
-    for _ in range(60):
-        action = env.action_space.sample()
-        state, reward, terminated, truncated, info = env.step(action)
+    # states, rewards = [], []
+    # for _ in range(60):
+    #     action = env.action_space.sample()
+    #     state, reward, terminated, truncated, info = env.step(action)
+    #     states.append(state)
+        # rewards.append(reward)
+        # print(state, reward)
     # states = np.array(states)
-    states, rewards = env.normalize_trajectory()
+    # rewards = np.array(rewards)
+    # print(states)
+    # print(rewards)
+    # sys.exit()
+    # states, rewards = env.normalize_trajectory()
 
     # action = env.action_space.sample()
+    # print(type(action[0][0]), type(action[0][1]))
+    # print(action)
+    # print(np.array(action).shape)
     # state = env.state_space.sample()
 
-    state_dim = len(state)
+    state_dim = len(model.delays[0])
     delays_steps_num = 2 * max_delay_step + 1
     hidden_shared_size=4
     hidden_shared_num=2
@@ -120,18 +132,30 @@ def train_ppo(model: nn.Module, train_dataset: DataLoaderType, validate_dataset:
     hidden_separ_num=2
     kernel_separ_size=3
 
-    agent = CNNSharedBackPolicy(state_dim, delays2change_num, delays_steps_num,
-                                hidden_shared_size, hidden_shared_num, kernel_shared_size,
-                                hidden_separ_size, hidden_separ_num, kernel_separ_size,
+    # agent = CNNSharedBackPolicy(state_dim, delays2change_num, delays_steps_num,
+    #                             hidden_shared_size, hidden_shared_num, kernel_shared_size,
+    #                             hidden_separ_size, hidden_separ_num, kernel_separ_size,
+    #                             model.device)
+    agent = MLPSharedBackPolicy(state_dim, delays2change_num, delays_steps_num,
+                                hidden_shared_size, hidden_shared_num,
+                                hidden_separ_size, hidden_separ_num,
                                 model.device)
-
     agent.count_parameters()
 
     # policy, value = agent(states_batched)
 
     policy = Policy(agent)
 
-    policy.act(states)
+    # policy.act(states)
+    # sys.exit()
+
+    runner = EnvRunner(env, policy, 30)
+    trajectory = runner.get_next()
+
+    print(trajectory)
+
+    # {k: v.shape for k, v in trajectory.items() if k != "state"}
+
 
     general_timer.__exit__()
     print(f"Total time elapsed: {general_timer.interval} s")

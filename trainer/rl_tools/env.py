@@ -4,6 +4,7 @@ import numpy as np
 import torch.nn as nn
 
 from contextlib import contextmanager
+from collections import defaultdict
 
 from typing import List, Tuple, Union, Callable, Iterable
 
@@ -80,7 +81,7 @@ class PerformanceEnv(gym.Env):
 
         # Definition of action spaces
         single_pair_space = spaces.Tuple((
-            spaces.Discrete(delays_number - 1),       # Index of delay to be changed
+            spaces.Discrete(delays_number),       # Index of delay to be changed
             IntRangeSpace(-max_delay_step, max_delay_step)      # delays step -max_delay_step..max_delay_step
         ))
         self.action_space = spaces.Tuple([single_pair_space for _ in range(delays2change_num)])
@@ -99,6 +100,7 @@ class PerformanceEnv(gym.Env):
                 zero_start (bool): If True starts from zero delays, else, start from random in state space.
         """
         super().reset(seed=seed)
+        self.step_curr = 1
         if zero_start:
             self.state = np.zeros((self.__delays_number,), dtype=int).tolist()
         else:
@@ -120,15 +122,17 @@ class PerformanceEnv(gym.Env):
 
         terminated = False
         truncated = False
-        if self.step_curr == self.max_steps:
+        if self.step_curr >= self.max_steps:
             truncated = True
+        # Increase step
+        self.step_curr += 1
 
         for action_pair in action:
             delay_ind, delay_step = action_pair
             self.state[delay_ind] += delay_step
             # Clip state if its out of range after step
             self.state = np.clip(self.state, self.state_space.low, self.state_space.high)
-   
+
         assert self.state_space.contains(self.state), f"Chosen state is out of state space."
 
         # Reshape delays according to their position in branches
@@ -182,7 +186,7 @@ class NormalizeWrapper(gym.Wrapper):
         self.state_var += self.state_alpha * (delta**2 - self.state_var)
         
         normalized_state = (state - self.state_mean) / np.sqrt(self.state_var + self.epsilon)
-        return normalized_state
+        return normalized_state.tolist()
 
     def _normalize_reward(self, reward):
         # Recalculate reward w.r.t. running normalization
@@ -206,6 +210,9 @@ class NormalizeWrapper(gym.Wrapper):
 
     def get_normalized_reward(self, reward):
         return self._normalize_reward(reward)
+
+    def __getattr__(self, name):
+        return getattr(self.env, name)
 
 class TrajectoryNormalizeWrapper(gym.Wrapper):
     """
@@ -246,3 +253,74 @@ class TrajectoryNormalizeWrapper(gym.Wrapper):
 
     def __getattr__(self, name):
         return getattr(self.env, name)
+
+class AsArray:
+    """ 
+    Converts lists of interactions to ndarray.
+    """
+    def __call__(self, trajectory):
+        # Modify trajectory inplace. 
+        for k, v in filter(lambda kv: kv[0] != "state" and kv[0] != "actions", trajectory.items()):
+            trajectory[k] = np.asarray(v)
+
+class EnvRunner:
+    """ Reinforcement learning runner in an environment with given policy """
+
+    def __init__(self, env, policy, nsteps, step_var=None):
+        self.env = env
+        self.policy = policy
+        self.nsteps = nsteps
+        self.transform = AsArray()
+        self.step_var = step_var if step_var is not None else 0
+        self.state = {"latest_observation": self.env.reset()[0]}
+
+    @property
+    def nenvs(self):
+        """ Returns number of batched envs or `None` if env is not batched """
+        return getattr(self.env.unwrapped, "nenvs", None)
+
+    def reset(self, **kwargs):
+        """ Resets env and runner states. """
+        self.state["latest_observation"], info = self.env.reset(**kwargs)
+        self.policy.reset()
+
+    def get_next(self):
+        """ Runs the agent in the environment.  """
+        trajectory = defaultdict(list, {"actions": []})
+        observations = []
+        rewards = []
+        resets = []
+        self.state["env_steps"] = self.nsteps
+
+        for i in range(self.nsteps):
+            observations.append(self.state["latest_observation"])
+            # print(self.state["latest_observation"])
+            act = self.policy.act(self.state["latest_observation"])
+            # print(act['values'])
+            if "actions" not in act:
+                raise ValueError("result of policy.act must contain 'actions' "
+                                 f"but has keys {list(act.keys())}")
+            for key, val in act.items():
+                trajectory[key].append(val)
+
+            obs, rew, terminated, truncated, _ = self.env.step(trajectory['actions'][-1])
+            done = np.logical_or(terminated, truncated)
+            self.state["latest_observation"] = obs
+            rewards.append(rew)
+            resets.append(done)
+            self.step_var += self.nenvs or 1
+
+            # Only reset if the env is not batched. Batched envs should
+            # auto-reset.
+            if not self.nenvs and np.all(done):
+                self.state["env_steps"] = i + 1
+                self.state["latest_observation"] = self.env.reset()[0]
+
+        trajectory.update(
+            observations=observations,
+            rewards=rewards,
+            resets=resets)
+        trajectory["state"] = self.state
+
+        self.transform(trajectory)
+        return trajectory
