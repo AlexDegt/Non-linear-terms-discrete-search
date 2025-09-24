@@ -11,9 +11,9 @@ class GAE:
         gamma = self.gamma
         lam = self.lambda_
 
-        rewards = np.asarray(trajectory["rewards"], dtype=np.float32)
-        values  = np.asarray(trajectory["values"],  dtype=np.float32)
-        dones   = np.asarray(trajectory["resets"],  dtype=np.float32)
+        rewards = np.asarray(trajectory["rewards"], dtype=np.float32).flatten()
+        values  = np.asarray(trajectory["values"],  dtype=np.float32).flatten()
+        dones   = np.asarray(trajectory["resets"],  dtype=np.float32).flatten()
 
         T = len(rewards)
         advantages = np.zeros_like(rewards, dtype=np.float32)
@@ -36,3 +36,22 @@ class GAE:
         trajectory["advantages"] = advantages
         trajectory["value_targets"] = value_targets
         return trajectory
+
+class NormalizeAdvantages:
+    """ Normalizes advantages to have zero mean and variance 1. """
+    def __call__(self, trajectory, eps=1e-8):
+        advantages = np.asarray(trajectory["advantages"]).flatten()
+        var = np.var(advantages)
+        mean = np.mean(advantages)
+        trajectory["advantages"] = (advantages - mean) / np.sqrt(var + eps)
+
+class AsArray:
+    """ 
+    Converts lists of interactions to ndarray.
+    """
+    def __call__(self, trajectory):
+        # Modify trajectory inplace. 
+        # for k, v in filter(lambda kv: kv[0] != "state" and kv[0] != "actions", trajectory.items()):
+        #     trajectory[k] = np.asarray(v)
+        for k, v in filter(lambda kv: kv[0] != "state", trajectory.items()):
+            trajectory[k] = np.asarray(v)

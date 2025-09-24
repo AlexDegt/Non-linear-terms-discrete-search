@@ -254,23 +254,14 @@ class TrajectoryNormalizeWrapper(gym.Wrapper):
     def __getattr__(self, name):
         return getattr(self.env, name)
 
-class AsArray:
-    """ 
-    Converts lists of interactions to ndarray.
-    """
-    def __call__(self, trajectory):
-        # Modify trajectory inplace. 
-        for k, v in filter(lambda kv: kv[0] != "state" and kv[0] != "actions", trajectory.items()):
-            trajectory[k] = np.asarray(v)
-
 class EnvRunner:
     """ Reinforcement learning runner in an environment with given policy """
 
-    def __init__(self, env, policy, nsteps, step_var=None):
+    def __init__(self, env, policy, nsteps, transforms=None, step_var=None):
         self.env = env
         self.policy = policy
         self.nsteps = nsteps
-        self.transform = AsArray()
+        self.transforms = transforms or []
         self.step_var = step_var if step_var is not None else 0
         self.state = {"latest_observation": self.env.reset()[0]}
 
@@ -322,5 +313,63 @@ class EnvRunner:
             resets=resets)
         trajectory["state"] = self.state
 
-        self.transform(trajectory)
+        for transform in self.transforms:
+            transform(trajectory)
+        
         return trajectory
+
+class TrajectorySampler:
+    """ Samples minibatches from trajectory for a number of epochs. """
+    def __init__(self, runner, num_epochs, num_minibatches, transforms=None):
+        self.runner = runner
+        self.num_epochs = num_epochs
+        self.num_minibatches = num_minibatches
+        self.transforms = transforms or []
+        self.minibatch_count = 0
+        self.epoch_count = 0
+        self.trajectory = None
+
+    def shuffle_trajectory(self):
+        """ Shuffles all elements in trajectory.
+
+        Should be called at the beginning of each epoch.
+        """
+        trajectory_len = self.trajectory["observations"].shape[0]
+
+        permutation = np.random.permutation(trajectory_len)
+        for key, value in self.trajectory.items():
+            if key != 'state':
+                self.trajectory[key] = value[permutation, ...]
+
+    def get_next(self):
+        """ Returns next minibatch.  """
+        if not self.trajectory:
+            self.trajectory = self.runner.get_next()
+
+        if self.minibatch_count == self.num_minibatches:
+            self.shuffle_trajectory()
+            self.minibatch_count = 0
+            self.epoch_count += 1
+
+        if self.epoch_count == self.num_epochs:
+            self.trajectory = self.runner.get_next()
+
+            self.shuffle_trajectory()
+            self.minibatch_count = 0
+            self.epoch_count = 0
+
+        trajectory_len = self.trajectory["observations"].shape[0]
+
+        batch_size = trajectory_len//self.num_minibatches
+
+        minibatch = {}
+        for key, value in self.trajectory.items():
+            if key != 'state':
+                minibatch[key] = value[self.minibatch_count*batch_size: (self.minibatch_count + 1)*batch_size]
+
+        self.minibatch_count += 1
+
+        for transform in self.transforms:
+            transform(minibatch)
+
+        return minibatch

@@ -14,9 +14,10 @@ sys.path.append('../../')
 
 from utils import Timer
 from oracle import Oracle
-from .rl_tools import PerformanceEnv, NormalizeWrapper, TrajectoryNormalizeWrapper, EnvRunner
+from .rl_tools import PerformanceEnv, NormalizeWrapper, TrajectoryNormalizeWrapper, EnvRunner, TrajectorySampler
 from .rl_tools import CNNSharedBackPolicy, MLPSharedBackPolicy, Policy
-from .rl_tools import GAE
+from .rl_tools import GAE, AsArray, NormalizeAdvantages
+from .rl_tools import PPO
 
 OptionalInt = Union[int, None]
 OptionalStr = Union[str, None]
@@ -93,75 +94,68 @@ def train_ppo(model: nn.Module, train_dataset: DataLoaderType, validate_dataset:
                                         quality_criterion, config, batch_to_tensors, chunk_num, 
                                         save_path, exp_name, weight_names)
 
+    # Define environment for best MSE search
     env = PerformanceEnv(model, delays_number, delays_range, max_delay_step, delays2change_num, max_steps, train_tomb_raider)
 
-    # Normalization state and reward parameters
+    # Define normalization wrapper for environment
     state_alpha = config["state_alpha"]
     reward_alpha = config["reward_alpha"]
+    env = NormalizeWrapper(env, state_alpha, reward_alpha)
 
-    # env = TrajectoryNormalizeWrapper(env)
-    env = NormalizeWrapper(env)
-    # Better to make normalization at the end of episode
-    # state, info = env.reset(seed=0, zero_start=True)
-
-    # states, rewards = [], []
-    # for _ in range(60):
-    #     action = env.action_space.sample()
-    #     state, reward, terminated, truncated, info = env.step(action)
-    #     states.append(state)
-        # rewards.append(reward)
-        # print(state, reward)
-    # states = np.array(states)
-    # rewards = np.array(rewards)
-    # print(states)
-    # print(rewards)
-    # sys.exit()
-    # states, rewards = env.normalize_trajectory()
-
-    # action = env.action_space.sample()
-    # print(type(action[0][0]), type(action[0][1]))
-    # print(action)
-    # print(np.array(action).shape)
-    # state = env.state_space.sample()
-
+    # Define parameters of agent
     state_dim = len(model.delays[0])
     delays_steps_num = 2 * max_delay_step + 1
-    hidden_shared_size=4
-    hidden_shared_num=2
-    kernel_shared_size=3
-    hidden_separ_size=4
-    hidden_separ_num=2
-    kernel_separ_size=3
-
-    # agent = CNNSharedBackPolicy(state_dim, delays2change_num, delays_steps_num,
-    #                             hidden_shared_size, hidden_shared_num, kernel_shared_size,
-    #                             hidden_separ_size, hidden_separ_num, kernel_separ_size,
-    #                             model.device)
+    hidden_shared_size = config["hidden_shared_size"]
+    hidden_shared_num = config["hidden_shared_num"]
+    kernel_shared_size = config["kernel_shared_size"]
+    hidden_separ_size = config["hidden_separ_size"]
+    hidden_separ_num = config["hidden_separ_num"]
+    kernel_separ_size = config["kernel_separ_size"]
     agent = MLPSharedBackPolicy(state_dim, delays2change_num, delays_steps_num,
                                 hidden_shared_size, hidden_shared_num,
                                 hidden_separ_size, hidden_separ_num,
                                 model.device)
     agent.count_parameters()
 
-    # policy, value = agent(states_batched)
-
+    # Policy: different returns for trajectory sampling and agent training
     policy = Policy(agent)
 
-    # policy.act(states)
-    # sys.exit()
+    # General training parameters
+    num_runner_steps = config["num_runner_steps"]
+    gamma = config["gamma"]
+    lambda_ = config["lambda_"]
+    num_epochs_per_traj = config["num_epochs_per_traj"]
+    num_minibatches = config["num_minibatches"]
 
-    runner = EnvRunner(env, policy, 30)
-    trajectory = runner.get_next()
+    def make_ppo_runner(env, policy, num_runner_steps=2048, gamma=0.99, lambda_=0.95, 
+                        num_epochs=10, num_minibatches=32):
+        """ Creates runner for PPO algorithm. """
+        runner_transforms = [AsArray(), GAE(policy, gamma=gamma, lambda_=lambda_)]
+        runner = EnvRunner(env, policy, num_runner_steps, transforms=runner_transforms)
 
-    # print(trajectory)
+        sampler_transforms = [NormalizeAdvantages()]
+        sampler = TrajectorySampler(runner, num_epochs=num_epochs, 
+                                num_minibatches=num_minibatches,
+                                transforms=sampler_transforms)
+        return sampler
 
-    gae = GAE(policy)
+    runner = make_ppo_runner(env, policy, num_runner_steps, gamma, lambda_, num_epochs_per_traj, num_minibatches)
 
-    gae(trajectory)
+    # Optimizer parameters
+    lr = config["lr"]
+    eps = config["eps"]
+    optimizer = torch.optim.Adam(policy.agent.parameters(), lr=lr, eps=eps)
+    epochs = config["total_epoch_num"]
+    # Learning rate scheduler
+    lr_mult = lambda epoch: (1 - (epoch/epochs))
+    sched = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_mult)
 
-    print(trajectory["advantages"])
+    cliprange = config["cliprange"]
+    value_loss_coef = config["value_loss_coef"]
+    max_grad_norm = config["max_grad_norm"]
+    # Define Proximal Policy Optimization RL optimizer
+    ppo = PPO(policy, optimizer, cliprange=cliprange, value_loss_coef=value_loss_coef, max_grad_norm=max_grad_norm)
 
-    # {k: v.shape for k, v in trajectory.items() if k != "state"}
 
 
     general_timer.__exit__()
