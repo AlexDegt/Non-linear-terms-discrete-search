@@ -152,11 +152,31 @@ def train_ppo(model: nn.Module, train_dataset: DataLoaderType, validate_dataset:
 
     cliprange = config["cliprange"]
     value_loss_coef = config["value_loss_coef"]
+    explore_loss_coef = config["explore_loss_coef"]
     max_grad_norm = config["max_grad_norm"]
     # Define Proximal Policy Optimization RL optimizer
-    ppo = PPO(policy, optimizer, cliprange=cliprange, value_loss_coef=value_loss_coef, max_grad_norm=max_grad_norm)
+    ppo = PPO(policy, optimizer, cliprange, value_loss_coef, explore_loss_coef, max_grad_norm)
 
+    batch1 = runner.get_next()
+    loss = ppo.loss(batch1)
 
+    for epoch in range(epochs):
+        trajectory = runner.get_next()
+
+        print(epoch)
+        if (epoch + 1) % 100 == 0:
+            rewards = np.array(env.env.episode_rewards)
+
+            if rewards.size > 0:
+                plt.plot(rewards[:, 0], rewards[:, 1], label = "episode rewards")
+                plt.title("Reward")
+                plt.xlabel("Total steps")
+                plt.ylabel("Reward")
+                plt.grid()
+                plt.show()
+
+        ppo.step(trajectory)
+        sched.step()
 
     general_timer.__exit__()
     print(f"Total time elapsed: {general_timer.interval} s")

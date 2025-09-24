@@ -20,7 +20,7 @@ block_size: 106752
 # Increase this parameter if you obtain out of memory error.
 chunk_num: 1
 dtype: complex128
-device: "cuda:4"
+device: "cuda:6"
 # dtype: complex64
 # Path to the folder with data
 data_path: '../../data/data2d.mat'
@@ -60,4 +60,5 @@ eps: 0.00001 # Adam epsilon
 # PPO training parameters
 cliprange: 0.2 # PPO policy clip range
 value_loss_coef: 0.25 # weight of critic loss
+explore_loss_coef: 0.1 # weight of explore loss
 max_grad_norm: 0.5 # Maximum grad norm for clipping

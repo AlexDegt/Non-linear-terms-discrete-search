@@ -82,7 +82,8 @@ class PerformanceEnv(gym.Env):
         # Definition of action spaces
         single_pair_space = spaces.Tuple((
             spaces.Discrete(delays_number),       # Index of delay to be changed
-            IntRangeSpace(-max_delay_step, max_delay_step)      # delays step -max_delay_step..max_delay_step
+            spaces.Discrete(2 * max_delay_step + 1)
+            # IntRangeSpace(-max_delay_step, max_delay_step)      # delays step -max_delay_step..max_delay_step
         ))
         self.action_space = spaces.Tuple([single_pair_space for _ in range(delays2change_num)])
         
@@ -128,11 +129,11 @@ class PerformanceEnv(gym.Env):
         self.step_curr += 1
 
         for action_pair in action:
-            delay_ind, delay_step = action_pair
+            delay_ind, delay_step_ind = action_pair
+            delay_step = delay_step_ind - self.__max_delay_step
             self.state[delay_ind] += delay_step
             # Clip state if its out of range after step
             self.state = np.clip(self.state, self.state_space.low, self.state_space.high)
-
         assert self.state_space.contains(self.state), f"Chosen state is out of state space."
 
         # Reshape delays according to their position in branches

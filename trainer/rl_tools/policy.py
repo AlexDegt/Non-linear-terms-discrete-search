@@ -150,9 +150,7 @@ class MLPSharedBackPolicy(nn.Module):
         self.value_out = nn.Linear(hidden_separ_size, 1, device=device)
 
     def forward(self, x):
-        # x: (channels, length)
-        x = x.transpose(0, 1)  # -> (length, channels)
-
+        # x: (length, channels)
         # Input
         x_shared = torch.tanh(self.layer_inp(x))
         for layer in self.hidden_shared:
@@ -168,10 +166,6 @@ class MLPSharedBackPolicy(nn.Module):
             for p in p_out:
                 logits = p(x_policy)            # (length, out_dim)
                 policy.append(torch.distributions.Categorical(logits=logits))
-                # print(policy[-1].probs.size())
-                # print(policy[-1].probs)
-                # print(policy[-1].probs.sum())
-                # sys.exit()
 
         # Value branch
         x_value = x_shared.clone()
@@ -202,28 +196,21 @@ class Policy:
         inputs = torch.tensor(inputs)
         if inputs.ndim < 2:
             inputs = inputs.unsqueeze(0)
-        else:
-            raise ValueError(f"Current RL implementation implies unbatched states. Current state includes {inputs.ndim} dimensions.")
-        inputs = inputs.to(self.agent.device)
-        
-        seq_len = inputs.shape[0]
-        inputs = torch.permute(inputs, (1, 0))
+        # else:
+        #     raise ValueError(f"Current RL implementation implies unbatched states. Current state includes {inputs.ndim} dimensions.")
+        inputs = inputs.to(self.agent.device).to(torch.float32)
 
         policy, value = self.agent(inputs)
 
         indices = policy[:int(len(policy) // 2)]
         steps = policy[int(len(policy) // 2):]
 
-        delays_steps_num = steps[0].probs.size()[1]
-        # Turns step indices into step values
-        delta_step = delays_steps_num // 2
-
         actions, distr, log_probs = [], [], []
         for j in range(int(len(policy) // 2)):
             distr.append([indices[j], steps[j]])
             indices_ind_j, steps_ind_j = indices[j].sample(), steps[j].sample()
-            steps_j = steps_ind_j - delta_step
-            action = torch.cat([indices_ind_j[:, None], steps_j[:, None]], dim=-1)
+            # steps_j = steps_ind_j - delta_step
+            action = torch.cat([indices_ind_j[:, None], steps_ind_j[:, None]], dim=-1)
             log_prob_ind = distr[-1][0].log_prob(indices_ind_j)
             log_prob_step = distr[-1][1].log_prob(steps_ind_j)
             log_prob = torch.cat([log_prob_ind[:, None], log_prob_step[:, None]], dim=-1)
@@ -232,8 +219,6 @@ class Policy:
 
         actions = np.array(actions)[:, 0, :].tolist()
         log_probs = np.array(log_probs)[:, 0, :].tolist()
-        # if len(np.array(actions).shape) == 2:
-        #     actions = np.array(actions)
 
         if not training:
             return {'actions': actions, 
