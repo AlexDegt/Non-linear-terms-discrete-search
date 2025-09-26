@@ -1,4 +1,6 @@
 import numpy as np
+import torch
+import os
 
 class GAE:
     """ Generalized Advantage Estimator. """
@@ -55,3 +57,125 @@ class AsArray:
         #     trajectory[k] = np.asarray(v)
         for k, v in filter(lambda kv: kv[0] != "state", trajectory.items()):
             trajectory[k] = np.asarray(v)
+
+class TrainingTracker:
+    """ 
+        Object includes methods and attributes for agent training parameters tracking.
+        Accumulates algorithm parameters during training.
+    """
+    def __init__(self, env, ppo, save_path=None):
+        self.env = env
+        self.ppo = ppo
+        self.save_path = save_path
+        # Parameters to be tracked
+        self.rewards = []
+        self.r2_score = [] # Coefficient of determination
+        self.policy_entropy = []
+        self.value_loss = []
+        self.policy_loss = []
+        self.value_targets = []
+        self.value_predicts = []
+        self.grad_norm = []
+        self.advantages = []
+        self.best_perform_list = []
+        self.best_perform = 100
+        self.best_delays = []
+    
+    def accum_stat(self, minibatch):
+        self.accum_rewards(minibatch)
+        self.accum_r2(minibatch)
+        self.accum_entropy(minibatch)
+        self.accum_value_loss(minibatch)
+        self.accum_policy_loss(minibatch)
+        self.accum_value_targets(minibatch)
+        self.accum_value_predicts(minibatch)
+        self.accum_grad_norm()
+        self.accum_advantages(minibatch)
+        self.accum_best_perform(minibatch)
+
+    def accum_rewards(self, minibatch):
+        rewards = np.mean(minibatch["rewards"].flatten())
+        self.rewards.append(rewards)
+        if self.save_path is not None:
+            np.save(os.path.join(self.save_path, f"rewards.npy"), np.asarray(self.rewards))
+
+    def accum_r2(self, minibatch):
+        """ R2 used to evaluate critic value prediction quality """
+        with torch.no_grad():
+            act = self.ppo.policy.act(minibatch["observations"], training=True)
+            value_predicts = act["values"].detach().cpu().numpy().flatten()
+            value_targets = minibatch["value_targets"].flatten()
+            ss_res = np.sum((value_targets - value_predicts) ** 2)
+            ss_tot = np.sum((value_targets - np.mean(value_targets)) ** 2)
+            r2_score = 1 - ss_res / ss_tot
+        self.r2_score.append(r2_score)
+        if self.save_path is not None:
+            np.save(os.path.join(self.save_path, f"r2_score.npy"), np.asarray(self.r2_score))
+
+    def accum_entropy(self, minibatch):
+        with torch.no_grad():
+            act = self.ppo.policy.act(minibatch["observations"], training=True)
+            entropy = self.ppo.explore_loss(minibatch, act).item()
+            self.policy_entropy.append(entropy)
+        if self.save_path is not None:
+            np.save(os.path.join(self.save_path, f"policy_entropy.npy"), np.asarray(self.policy_entropy))
+
+    def accum_value_loss(self, minibatch):
+        with torch.no_grad():
+            act = self.ppo.policy.act(minibatch["observations"], training=True)
+            value_loss = self.ppo.value_loss(minibatch, act).item()
+            self.value_loss.append(value_loss)
+        if self.save_path is not None:
+            np.save(os.path.join(self.save_path, f"value_loss.npy"), np.asarray(self.value_loss))
+
+    def accum_policy_loss(self, minibatch):
+        with torch.no_grad():
+            act = self.ppo.policy.act(minibatch["observations"], training=True)
+            policy_loss = self.ppo.policy_loss(minibatch, act).item()
+            self.policy_loss.append(policy_loss)
+        if self.save_path is not None:
+            np.save(os.path.join(self.save_path, f"policy_loss.npy"), np.asarray(self.policy_loss))
+
+    def accum_value_targets(self, minibatch):
+        value_targets = np.mean(minibatch["value_targets"].flatten())
+        self.value_targets.append(value_targets)
+        if self.save_path is not None:
+            np.save(os.path.join(self.save_path, f"value_targets.npy"), np.asarray(self.value_targets))
+
+    def accum_value_predicts(self, minibatch):
+        with torch.no_grad():
+            act = self.ppo.policy.act(minibatch["observations"], training=True)
+            value_predicts = np.mean(act["values"].detach().cpu().numpy().flatten())
+            self.value_predicts.append(value_predicts)
+        if self.save_path is not None:
+            np.save(os.path.join(self.save_path, f"value_predicts.npy"), np.asarray(self.value_predicts))
+
+    def accum_grad_norm(self):
+        with torch.no_grad():
+            grads = [p.grad.detach().norm()**2 for p in self.ppo.policy.agent.parameters() if p.grad is not None]
+            grad_norm = torch.sqrt(torch.stack(grads).sum()).item()
+        self.grad_norm.append(grad_norm)
+        if self.save_path is not None:
+            np.save(os.path.join(self.save_path, f"grad_norm.npy"), np.asarray(self.grad_norm))
+
+    def accum_advantages(self, minibatch):
+        advantages = np.mean(minibatch["advantages"].flatten())
+        self.advantages.append(advantages)
+        if self.save_path is not None:
+            np.save(os.path.join(self.save_path, f"advantages.npy"), np.asarray(self.advantages))
+
+    def accum_best_perform(self, minibatch):
+        """
+            Best performance doesn`t depend on action, so it can be
+            acquired from sampled trajectory during agent interaction
+            with environment
+        """
+        best_perform = self.env.best_perform
+        self.best_perform_list.append(best_perform)
+        if self.save_path is not None:
+            np.save(os.path.join(self.save_path, "best_perform.npy"), np.asarray(self.best_perform_list))
+            if best_perform < self.best_perform:
+                self.best_perform = best_perform
+                self.best_delays = self.env.best_delays
+                np.save(os.path.join(self.save_path, "best_delays.npy"), np.asarray(self.best_delays))
+                torch.save(self.env.tomb_raider.state_dict(), os.path.join(self.save_path, "best_params.pt"))

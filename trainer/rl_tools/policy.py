@@ -118,7 +118,6 @@ class MLPSharedBackPolicy(nn.Module):
 
         # Input layer: state_dim -> hidden_shared_size
         self.layer_inp = nn.Linear(state_dim, hidden_shared_size, device=device)
-
         # Shared backbone
         self.hidden_shared = nn.ModuleList([
             nn.Linear(hidden_shared_size, hidden_shared_size, device=device)
@@ -179,10 +178,10 @@ class MLPSharedBackPolicy(nn.Module):
     def count_parameters(self, trainable=False):
         if trainable:
             param_num = sum(p.numel() for p in self.parameters() if p.requires_grad)
-            print(f"Total trainable parameters number {param_num}")
+            print(f"Total agent trainable parameters number {param_num}")
         else:
             param_num = sum(p.numel() for p in self.parameters())
-            print(f"Total parameters number {param_num}")
+            print(f"Total agent parameters number {param_num}")
         return param_num
 
 class Policy:

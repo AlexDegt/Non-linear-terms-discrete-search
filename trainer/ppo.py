@@ -8,6 +8,7 @@ from functools import partial
 from collections import defaultdict
 
 from .ls import train_ls
+import time
 
 import sys, os
 sys.path.append('../../')
@@ -16,7 +17,7 @@ from utils import Timer
 from oracle import Oracle
 from .rl_tools import PerformanceEnv, NormalizeWrapper, TrajectoryNormalizeWrapper, EnvRunner, TrajectorySampler
 from .rl_tools import CNNSharedBackPolicy, MLPSharedBackPolicy, Policy
-from .rl_tools import GAE, AsArray, NormalizeAdvantages
+from .rl_tools import GAE, AsArray, NormalizeAdvantages, TrainingTracker
 from .rl_tools import PPO
 
 OptionalInt = Union[int, None]
@@ -103,14 +104,14 @@ def train_ppo(model: nn.Module, train_dataset: DataLoaderType, validate_dataset:
     env = NormalizeWrapper(env, state_alpha, reward_alpha)
 
     # Define parameters of agent
-    state_dim = len(model.delays[0])
+    state_dim = len(model.delays[0]) * len(model.delays)
     delays_steps_num = 2 * max_delay_step + 1
     hidden_shared_size = config["hidden_shared_size"]
     hidden_shared_num = config["hidden_shared_num"]
-    kernel_shared_size = config["kernel_shared_size"]
+    # kernel_shared_size = config["kernel_shared_size"]
     hidden_separ_size = config["hidden_separ_size"]
     hidden_separ_num = config["hidden_separ_num"]
-    kernel_separ_size = config["kernel_separ_size"]
+    # kernel_separ_size = config["kernel_separ_size"]
     agent = MLPSharedBackPolicy(state_dim, delays2change_num, delays_steps_num,
                                 hidden_shared_size, hidden_shared_num,
                                 hidden_separ_size, hidden_separ_num,
@@ -157,26 +158,19 @@ def train_ppo(model: nn.Module, train_dataset: DataLoaderType, validate_dataset:
     # Define Proximal Policy Optimization RL optimizer
     ppo = PPO(policy, optimizer, cliprange, value_loss_coef, explore_loss_coef, max_grad_norm)
 
-    batch1 = runner.get_next()
-    loss = ppo.loss(batch1)
+    # Define statistics tracker
+    tracker = TrainingTracker(env, ppo, save_path)
 
     for epoch in range(epochs):
+        t_epoch_start = time.time()
+
         trajectory = runner.get_next()
-
-        print(epoch)
-        if (epoch + 1) % 100 == 0:
-            rewards = np.array(env.env.episode_rewards)
-
-            if rewards.size > 0:
-                plt.plot(rewards[:, 0], rewards[:, 1], label = "episode rewards")
-                plt.title("Reward")
-                plt.xlabel("Total steps")
-                plt.ylabel("Reward")
-                plt.grid()
-                plt.show()
-
         ppo.step(trajectory)
         sched.step()
+        tracker.accum_stat(trajectory)
+
+        t_epoch_end = time.time()
+        print(f"Epoch {epoch}, reward = {tracker.rewards[-1]}, time per epoch {t_epoch_end - t_epoch_start} s")
 
     general_timer.__exit__()
     print(f"Total time elapsed: {general_timer.interval} s")

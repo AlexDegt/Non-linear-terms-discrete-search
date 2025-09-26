@@ -72,9 +72,9 @@ class PerformanceEnv(gym.Env):
         self.__max_delay_step = max_delay_step
         self.__delays2change_num = delays2change_num
         self.__train_tomb_raider = train_tomb_raider
-        self.__tomb_raider = tomb_raider
+        self.tomb_raider = tomb_raider
         # Number of delays in each branch. For 2D model it equals 3
-        self.__delays_in_branch = len(self.__tomb_raider.delays[0])
+        self.__delays_in_branch = len(self.tomb_raider.delays[0])
 
         # Definition of state (observation) space
         self.state_space = spaces.Box(low=delays_range[0], high=delays_range[1] - 1, shape=(delays_number,), dtype=int)
@@ -92,20 +92,30 @@ class PerformanceEnv(gym.Env):
         self.step_curr = 1 # Current step number
         self.max_steps = max_steps
 
-    def reset(self, seed=None, zero_start=False):
+        # Store best performance value (dB) and corresponding delays
+        self.best_perform = 100
+        self.best_delays = []
+
+    def reset(self, seed=None, start_mode='zeros'):
         """
             Resets environment
             
             Args:
                 seed (int): random seed.
-                zero_start (bool): If True starts from zero delays, else, start from random in state space.
+                start_mode (str): Flag, which shows how to start new trajectory:
+                    start_mode == 'zeros', - zero delays,
+                    start_mode == 'random', - delays from uniform distribution,
+                    start_mode == 'continue' - continues from saved state. First trajectory - from zeros.
+                    
         """
         super().reset(seed=seed)
         self.step_curr = 1
-        if zero_start:
+        if start_mode == 'zeros':
             self.state = np.zeros((self.__delays_number,), dtype=int).tolist()
-        else:
+        elif start_mode == 'random':
             self.state = self.state_space.sample()
+        elif start_mode == 'continue':
+            pass
         return self.state, {}
 
     def step(self, action):
@@ -140,7 +150,7 @@ class PerformanceEnv(gym.Env):
         delays = np.array(self.state).reshape(-1, self.__delays_in_branch).tolist()
 
         # Load delays in model
-        self.__tomb_raider.set_delays(delays)
+        self.tomb_raider.set_delays(delays)
 
         # Train tomb raider in a search of high performance!
         with no_print():
@@ -148,6 +158,11 @@ class PerformanceEnv(gym.Env):
 
         # Reward design...
         reward = 10 ** (-1 * perform_db / 10)
+
+        # Store best performance and delays
+        if perform_db < self.best_perform:
+            self.best_perform = perform_db
+            self.best_delays = delays
 
         return self.state, reward, terminated, truncated, {}
 
@@ -200,7 +215,7 @@ class NormalizeWrapper(gym.Wrapper):
     
     def reset(self, **kwargs):
         state, info = self.env.reset(**kwargs)
-        return self._normalize_state(state), info
+        return state, info
     
     def step(self, action):
         state, reward, terminated, truncated, info = self.env.step(action)
@@ -329,6 +344,7 @@ class TrajectorySampler:
         self.minibatch_count = 0
         self.epoch_count = 0
         self.trajectory = None
+        self.trajectory_count = 0
 
     def shuffle_trajectory(self):
         """ Shuffles all elements in trajectory.
@@ -346,6 +362,7 @@ class TrajectorySampler:
         """ Returns next minibatch.  """
         if not self.trajectory:
             self.trajectory = self.runner.get_next()
+            # np.save(f"observations_{self.trajectory_count}.npy", np.asarray(self.trajectory["observations"]))
 
         if self.minibatch_count == self.num_minibatches:
             self.shuffle_trajectory()
@@ -353,7 +370,10 @@ class TrajectorySampler:
             self.epoch_count += 1
 
         if self.epoch_count == self.num_epochs:
+            self.runner.reset()
             self.trajectory = self.runner.get_next()
+            self.trajectory_count += 1
+            # np.save(f"observations_{self.trajectory_count}.npy", np.asarray(self.trajectory["observations"]))
 
             self.shuffle_trajectory()
             self.minibatch_count = 0

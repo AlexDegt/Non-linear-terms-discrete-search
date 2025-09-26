@@ -30,7 +30,8 @@ class PPO:
             import_samp_ratio += log_prob_ind + log_prob_step_ind - log_prob_ind_old - log_prob_step_ind_old
         import_samp_ratio = torch.exp(import_samp_ratio)
         loss_per_sample = import_samp_ratio * advantages
-        import_samp_ratio_clip = torch.clamp(import_samp_ratio, 1 - self.cliprange, 1 + self.cliprange)
+        import_samp_ratio_clip = import_samp_ratio
+        # import_samp_ratio_clip = torch.clamp(import_samp_ratio, 1 - self.cliprange, 1 + self.cliprange)
         loss_per_sample_clip = import_samp_ratio_clip * advantages
         return -1 * torch.mean(torch.min(loss_per_sample, loss_per_sample_clip))
 
@@ -40,21 +41,19 @@ class PPO:
         values_old = torch.tensor(trajectory["values"], device=self.policy.agent.device).flatten()
         values = act['values']
         squares_vector_simple = (values - value_targets) ** 2
-        squares_vector_clip = (values_old + torch.clamp(values - values_old, 1 - self.cliprange, 1 + self.cliprange) - value_targets) ** 2
+        # value_pred_clipped = values_old + (values - values_old).clamp(-self.cliprange, self.cliprange)
+        # squares_vector_clip = (value_pred_clipped - value_targets) ** 2
+        squares_vector_clip = squares_vector_simple
         return torch.mean(torch.max(squares_vector_simple, squares_vector_clip))
 
     def explore_loss(self, trajectory, act):
         """ Computes policy entropy on a given trajectory. """
         actions = torch.tensor(trajectory["actions"], device=self.policy.agent.device)
         policy = act['distribution']
-        delays2change_num = actions.shape[1]
-        log_policy_sum = 0
-        for j_delay in range(delays2change_num):
-            distr_ind, distr_step_ind = policy[j_delay]
-            log_prob_ind = distr_ind.log_prob(actions[:, j_delay, 0])
-            log_prob_step_ind = distr_step_ind.log_prob(actions[:, j_delay, 1])
-            log_policy_sum += log_prob_ind + log_prob_step_ind
-        return -1 * torch.mean(torch.exp(log_policy_sum) * log_policy_sum)
+        entropy = 0
+        for distr_ind, distr_step_ind in policy:
+            entropy += distr_ind.entropy().mean() + distr_step_ind.entropy().mean()
+        return entropy
 
     def loss(self, trajectory):
         act = self.policy.act(trajectory["observations"], training=True)
@@ -70,6 +69,6 @@ class PPO:
 
         loss.backward()
 
-        grad_norm = torch.nn.utils.clip_grad_norm_(self.policy.agent.parameters(), self.max_grad_norm)
+        # grad_norm = torch.nn.utils.clip_grad_norm_(self.policy.agent.parameters(), self.max_grad_norm)
 
         self.optimizer.step()
