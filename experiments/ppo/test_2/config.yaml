@@ -2,7 +2,7 @@
 trial_descript: Training of 1D Chebyshev polynomial-based model
 # If trial_name == 'None', then name to the experiment is given automatically,
 # otherwise it is set name set by user 
-trial_name: test_1
+trial_name: test_2
 
 # trial_name: sgd_full_grad_adam_10k_epochs_4_pow_dim_mu_1e_3_stand_tx
 # trial_name: test
@@ -37,28 +37,28 @@ delays2change_num: 1 # Maximum number of delays to change per single agent move
 max_steps: 100000 # Maximum number of PPO steps
 # Normalization of state and reward parameters
 state_alpha: 0.0
-reward_alpha: 0.0
+reward_alpha: 0.2
 
 # Parameters of MLP agent
-hidden_shared_size: 4
+hidden_shared_size: 128
 hidden_shared_num: 2
 # kernel_shared_size: 3
-hidden_separ_size: 6
-hidden_separ_num: 10
+hidden_separ_size: 128
+hidden_separ_num: 3
 # kernel_separ_size: 3
 
 # General training parameters
-num_runner_steps: 1024 # Steps in trajectory
+num_runner_steps: 32 # Steps in trajectory
 gamma: 0.99 # GAE gamm
-lambda_: 0.8 # GAE lambda
-num_epochs_per_traj: 10 # Number of epochs per each trajectory
-num_minibatches: 8 # Number of mini-batches to divide whole trajectory into
-total_epoch_num: 100000 # Total number of epochs
-lr: 0.001 # Adam learning rate
+lambda_: 0.95 # GAE lambda
+num_epochs_per_traj: 1 # Number of epochs per each trajectory
+num_minibatches: 2 # Number of mini-batches to divide whole trajectory into
+total_epoch_num: 30000 # Total number of epochs
+lr: 0.0003 # Adam learning rate
 eps: 0.00001 # Adam epsilon
 
 # PPO training parameters
 cliprange: 0.2 # PPO policy clip range
-value_loss_coef: 0.25 # weight of critic loss
-explore_loss_coef: 0.1 # weight of explore loss
+value_loss_coef: 0.5 # weight of critic loss
+explore_loss_coef: 0.02 # weight of explore loss
 max_grad_norm: 0.5 # Maximum grad norm for clipping

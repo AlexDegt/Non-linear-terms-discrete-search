@@ -118,6 +118,8 @@ def train_ppo(model: nn.Module, train_dataset: DataLoaderType, validate_dataset:
                                 model.device)
     agent.count_parameters()
 
+    # agent.enumerate_parameters()
+
     # Policy: different returns for trajectory sampling and agent training
     policy = Policy(agent)
 

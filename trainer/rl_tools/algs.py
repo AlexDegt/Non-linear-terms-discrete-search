@@ -1,4 +1,6 @@
 import torch
+import math
+import sys
 
 class PPO:
     def __init__(self, policy, optimizer,
@@ -30,8 +32,8 @@ class PPO:
             import_samp_ratio += log_prob_ind + log_prob_step_ind - log_prob_ind_old - log_prob_step_ind_old
         import_samp_ratio = torch.exp(import_samp_ratio)
         loss_per_sample = import_samp_ratio * advantages
-        import_samp_ratio_clip = import_samp_ratio
-        # import_samp_ratio_clip = torch.clamp(import_samp_ratio, 1 - self.cliprange, 1 + self.cliprange)
+        # import_samp_ratio_clip = import_samp_ratio
+        import_samp_ratio_clip = torch.clamp(import_samp_ratio, 1 - self.cliprange, 1 + self.cliprange)
         loss_per_sample_clip = import_samp_ratio_clip * advantages
         return -1 * torch.mean(torch.min(loss_per_sample, loss_per_sample_clip))
 
@@ -41,9 +43,9 @@ class PPO:
         values_old = torch.tensor(trajectory["values"], device=self.policy.agent.device).flatten()
         values = act['values']
         squares_vector_simple = (values - value_targets) ** 2
-        # value_pred_clipped = values_old + (values - values_old).clamp(-self.cliprange, self.cliprange)
-        # squares_vector_clip = (value_pred_clipped - value_targets) ** 2
-        squares_vector_clip = squares_vector_simple
+        value_pred_clipped = values_old + (values - values_old).clamp(-self.cliprange, self.cliprange)
+        squares_vector_clip = (value_pred_clipped - value_targets) ** 2
+        # squares_vector_clip = squares_vector_simple
         return torch.mean(torch.max(squares_vector_simple, squares_vector_clip))
 
     def explore_loss(self, trajectory, act):
@@ -65,10 +67,75 @@ class PPO:
     def step(self, trajectory):
         """ Computes the loss function and performs a single gradient step. """
         self.optimizer.zero_grad()
-        loss = self.loss(trajectory)
 
+        loss = self.loss(trajectory)
         loss.backward()
 
-        # grad_norm = torch.nn.utils.clip_grad_norm_(self.policy.agent.parameters(), self.max_grad_norm)
+        grad_norm = torch.nn.utils.clip_grad_norm_(self.policy.agent.parameters(), self.max_grad_norm)
 
         self.optimizer.step()
+
+    def grad_norm(self, params):
+        sqsum = 0
+        for p in params:
+            if p.grad is None:
+                continue
+            g = p.grad.detach()
+            sqsum += g.pow(2).sum().item()
+        return math.sqrt(sqsum + 1e-18)
+
+    def debug_MLPSharedBackPolicy(self):
+        # Debug shared-neck arhitecture
+        shared_params = [self.policy.agent.layer_inp.weight]
+        shared_params.extend([p.weight for p in self.policy.agent.hidden_shared])
+
+        policy_params = []
+        policy_params.extend([p.weight for p in self.policy.agent.hidden_policy])
+        policy_params.extend([p.weight for p in self.policy.agent.delay_range])
+        policy_params.extend([p.weight for p in self.policy.agent.delay_steps])
+
+        value_params = [self.policy.agent.value_out.weight]
+        value_params.extend([p.weight for p in self.policy.agent.hidden_value])
+
+        act = self.policy.act(trajectory["observations"], training=True)
+
+        # Gradient for value head
+        self.optimizer.zero_grad(set_to_none=True)
+        L_pi = self.policy_loss(trajectory, act)
+        L_v = self.value_loss(trajectory, act)
+        L_ent = self.explore_loss(trajectory, act)
+
+        (L_v * self.value_loss_coef).backward(retain_graph=True)
+        gn_shared_v = self.grad_norm(shared_params)
+        gn_value = self.grad_norm(value_params)
+        gn_policy = self.grad_norm(policy_params)
+
+        # Gradient for policy head
+        self.optimizer.zero_grad(set_to_none=True)
+        L_pi = self.policy_loss(trajectory, act)
+        L_v = self.value_loss(trajectory, act)
+        L_ent = self.explore_loss(trajectory, act)
+
+        (L_pi - L_ent * self.explore_loss_coef).backward(retain_graph=True)
+        gn_shared_p = self.grad_norm(shared_params)
+        gn_policy2 = self.grad_norm(policy_params)
+        gn_value2 = self.grad_norm(value_params)
+
+        # Gradients for whole loss
+        self.optimizer.zero_grad(set_to_none=True)
+        L_pi = self.policy_loss(trajectory, act)
+        L_v = self.value_loss(trajectory, act)
+        L_ent = self.explore_loss(trajectory, act)
+
+        (L_pi + L_v * self.value_loss_coef - L_ent * self.explore_loss_coef).backward(retain_graph=True)
+        gn_shared_all = self.grad_norm(shared_params)
+        gn_total = self.grad_norm(shared_params + policy_params + value_params)
+
+        print(f"grad L_value w.r.t. shared = {gn_shared_v}\n",
+              f"grad L_value w.r.t. value = {gn_value}\n" ,
+              f"grad L_value w.r.t. policy = {gn_policy}\n",
+              f"grad L_policy w.r.t. shared = {gn_shared_p}\n",
+              f"grad L_policy w.r.t. value = {gn_value2}\n" ,
+              f"grad L_policy w.r.t. policy = {gn_policy2}\n",
+              f"grad L_all w.r.t. shared = {gn_shared_all}\n",
+              f"grad L_all w.r.t. all params = {gn_total}")

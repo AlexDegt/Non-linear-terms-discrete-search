@@ -184,6 +184,14 @@ class MLPSharedBackPolicy(nn.Module):
             print(f"Total agent parameters number {param_num}")
         return param_num
 
+    def enumerate_parameters(self, trainable=False):
+        if trainable:
+            params = [(name, p.data.size()) for name, p in self.named_parameters() if p.requires_grad]
+            print(f"Agent trainable parameters {params}")
+        else:
+            params = [(name, p.data.size()) for name, p in self.named_parameters()]
+            print(f"Agent parameters {params}")
+
 class Policy:
     def __init__(self, agent):
         self.agent = agent
