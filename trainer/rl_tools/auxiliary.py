@@ -76,12 +76,14 @@ class TrainingTracker:
         self.value_targets = []
         self.value_predicts = []
         self.grad_norm = []
+        self.grad_norm_policy = []
+        self.grad_norm_value = []
         self.advantages = []
         self.best_perform_list = []
         self.best_perform = 100
         self.best_delays = []
     
-    def accum_stat(self, minibatch):
+    def accum_stat(self, minibatch, trajectory):
         self.accum_rewards(minibatch)
         self.accum_r2(minibatch)
         self.accum_entropy(minibatch)
@@ -90,6 +92,8 @@ class TrainingTracker:
         self.accum_value_targets(minibatch)
         self.accum_value_predicts(minibatch)
         self.accum_grad_norm()
+        self.accum_policy_grad_norm()
+        self.accum_value_grad_norm()
         self.accum_advantages(minibatch)
         self.accum_best_perform(minibatch)
 
@@ -158,6 +162,22 @@ class TrainingTracker:
         if self.save_path is not None:
             np.save(os.path.join(self.save_path, f"grad_norm.npy"), np.asarray(self.grad_norm))
 
+    def accum_policy_grad_norm(self):
+        with torch.no_grad():
+            grads = [p.grad.detach().norm()**2 for p in self.ppo.policy.agent.policy_parameters() if p.grad is not None]
+            grad_norm = torch.sqrt(torch.stack(grads).sum()).item()
+        self.grad_norm_policy.append(grad_norm)
+        if self.save_path is not None:
+            np.save(os.path.join(self.save_path, f"grad_norm_policy.npy"), np.asarray(self.grad_norm_policy))
+
+    def accum_value_grad_norm(self):
+        with torch.no_grad():
+            grads = [p.grad.detach().norm()**2 for p in self.ppo.policy.agent.value_parameters() if p.grad is not None]
+            grad_norm = torch.sqrt(torch.stack(grads).sum()).item()
+        self.grad_norm_value.append(grad_norm)
+        if self.save_path is not None:
+            np.save(os.path.join(self.save_path, f"grad_norm_value.npy"), np.asarray(self.grad_norm_value))
+
     def accum_advantages(self, minibatch):
         advantages = np.mean(minibatch["advantages"].flatten())
         self.advantages.append(advantages)
@@ -179,3 +199,11 @@ class TrainingTracker:
                 self.best_delays = self.env.best_delays
                 np.save(os.path.join(self.save_path, "best_delays.npy"), np.asarray(self.best_delays))
                 torch.save(self.env.tomb_raider.state_dict(), os.path.join(self.save_path, "best_params.pt"))
+
+    # def approx_kl(self, minibatch):
+    #     with torch.no_grad():
+    #         act = self.ppo.policy.act(minibatch["observations"], training=True)
+    #         policy_loss = self.ppo.policy_loss(minibatch, act).item()
+    #         self.policy_loss.append(policy_loss)
+    #     if self.save_path is not None:
+    #         np.save(os.path.join(self.save_path, f"policy_loss.npy"), np.asarray(self.policy_loss))

@@ -8,6 +8,7 @@ from collections import defaultdict
 
 from typing import List, Tuple, Union, Callable, Iterable
 
+from copy import deepcopy
 import sys
 
 RangeType = List[int]
@@ -157,7 +158,7 @@ class PerformanceEnv(gym.Env):
             _, perform_db = self.__train_tomb_raider()
 
         # Reward design...
-        reward = 10 ** (-1 * perform_db / 10)
+        reward = (10 ** (-1 * perform_db / 10) / 25 - 0.5) / 100
 
         # Store best performance and delays
         if perform_db < self.best_perform:
@@ -358,10 +359,13 @@ class TrajectorySampler:
             if key != 'state':
                 self.trajectory[key] = value[permutation, ...]
 
-    def get_next(self):
+    def get_next(self, return_whole=False):
         """ Returns next minibatch.  """
         if not self.trajectory:
             self.trajectory = self.runner.get_next()
+            for transform in self.transforms:
+                transform(self.trajectory)
+            self.whole_trajectory = deepcopy(self.trajectory)
             # np.save(f"observations_{self.trajectory_count}.npy", np.asarray(self.trajectory["observations"]))
 
         if self.minibatch_count == self.num_minibatches:
@@ -373,6 +377,9 @@ class TrajectorySampler:
             self.runner.reset()
             self.trajectory = self.runner.get_next()
             self.trajectory_count += 1
+            for transform in self.transforms:
+                transform(self.trajectory)
+            self.whole_trajectory = deepcopy(self.trajectory)
             # np.save(f"observations_{self.trajectory_count}.npy", np.asarray(self.trajectory["observations"]))
 
             self.shuffle_trajectory()
@@ -390,7 +397,9 @@ class TrajectorySampler:
 
         self.minibatch_count += 1
 
-        for transform in self.transforms:
-            transform(minibatch)
-
-        return minibatch
+        # for transform in self.transforms:
+        #     transform(minibatch)
+        if return_whole:
+            return minibatch, self.whole_trajectory
+        else:
+            return minibatch

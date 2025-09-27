@@ -192,6 +192,130 @@ class MLPSharedBackPolicy(nn.Module):
             params = [(name, p.data.size()) for name, p in self.named_parameters()]
             print(f"Agent parameters {params}")
 
+class MLPSeparatePolicy(nn.Module):
+    """
+    Model with separated policy and valueheads using fully connected layers.
+    Input is always (channels, length) without batch dimension.
+    """
+    def __init__(self, state_dim, delays2change_num, delays_steps_num,
+                 hidden_policy_size=4, hidden_policy_num=2,
+                 hidden_value_size=4, hidden_value_num=2,
+                 device='cuda'):
+        super().__init__()
+        self.device = device
+        self.state_dim = state_dim
+        self.delays2change_num = delays2change_num
+        self.delays_steps_num = delays_steps_num
+
+        self.act = torch.nn.SiLU()
+
+        self.policy = nn.ModuleList()
+        self.value = nn.ModuleList()
+
+        # Policy branch
+        for j in range(hidden_policy_num):
+            in_ch = state_dim if j == 0 else hidden_policy_size
+            self.policy.append(nn.Linear(in_ch, hidden_policy_size, device=device))
+
+        # Policy output
+        self.delay_range = nn.ModuleList([
+            nn.Linear(hidden_policy_size, state_dim, device=device)
+            for _ in range(delays2change_num)
+        ])
+        self.delay_steps = nn.ModuleList([
+            nn.Linear(hidden_policy_size, delays_steps_num, device=device)
+            for _ in range(delays2change_num)
+        ])
+        self.policy_out = [self.delay_range, self.delay_steps]
+
+        # Value branch
+        for j in range(hidden_value_num):
+            in_ch = state_dim if j == 0 else hidden_value_size
+            self.value.append(nn.Linear(in_ch, hidden_value_size, device=device))
+        self.value_out = nn.Linear(hidden_value_size, 1, device=device)
+
+    def forward(self, x):
+        # x: (length, channels)
+
+        # Policy branch
+        x_policy = x.clone()
+        for layer in self.policy:
+            x_policy = self.act(layer(x_policy))
+
+        policy = []
+        for p_out in self.policy_out:
+            for p in p_out:
+                logits = p(x_policy)            # (length, out_dim)
+                policy.append(torch.distributions.Categorical(logits=logits))
+
+        # Value branch
+        x_value = x.clone()
+        for j, layer in enumerate(self.value):
+            x_value = self.act(layer(x_value))
+        value = self.value_out(x_value)         # (length, 1)
+        value = value.squeeze(-1)               # (length,)
+
+        return policy, value
+
+    def policy_parameters(self):
+        params = []
+
+        if isinstance(self.policy, nn.Module):
+            params += list(self.policy.parameters())
+        elif isinstance(self.policy, (nn.ModuleList, nn.Sequential)):
+            params += list(self.policy.parameters())
+
+        if isinstance(self.delay_range, nn.Module):
+            params += list(self.delay_range.parameters())
+        elif isinstance(self.delay_range, (nn.ParameterList, list, tuple)):
+            for p in self.delay_range:
+                assert isinstance(p, nn.Parameter)
+            params += list(self.delay_range)
+
+        if isinstance(self.delay_steps, nn.Module):
+            params += list(self.delay_steps.parameters())
+        elif isinstance(self.delay_steps, (nn.ParameterList, list, tuple)):
+            for p in self.delay_steps:
+                assert isinstance(p, nn.Parameter)
+            params += list(self.delay_steps)
+
+        # sanity-check
+        for p in params:
+            assert isinstance(p, nn.Parameter) and p.is_leaf, "policy_parameters: non-leaf detected"
+        return params
+
+    def value_parameters(self):
+        params = []
+        if isinstance(self.value, nn.Module):
+            params += list(self.value.parameters())
+        elif isinstance(self.value, (nn.ModuleList, nn.Sequential)):
+            params += list(self.value.parameters())
+
+        params.append(self.value_out.weight)
+        if self.value_out.bias is not None:
+            params.append(self.value_out.bias)
+
+        for p in params:
+            assert isinstance(p, nn.Parameter) and p.is_leaf, "value_parameters: non-leaf detected"
+        return params
+
+    def count_parameters(self, trainable=False):
+        if trainable:
+            param_num = sum(p.numel() for p in self.parameters() if p.requires_grad)
+            print(f"Total agent trainable parameters number {param_num}")
+        else:
+            param_num = sum(p.numel() for p in self.parameters())
+            print(f"Total agent parameters number {param_num}")
+        return param_num
+
+    def enumerate_parameters(self, trainable=False):
+        if trainable:
+            params = [(name, p.data.size()) for name, p in self.named_parameters() if p.requires_grad]
+            print(f"Agent trainable parameters {params}")
+        else:
+            params = [(name, p.data.size()) for name, p in self.named_parameters()]
+            print(f"Agent parameters {params}")
+
 class Policy:
     def __init__(self, agent):
         self.agent = agent

@@ -4,16 +4,20 @@ import sys
 
 class PPO:
     def __init__(self, policy, optimizer,
-               cliprange=0.2,
+               cliprange_policy=0.2,
+               cliprange_value=0.2,
                value_loss_coef=0.25,
                explore_loss_coef=0.1,
-               max_grad_norm=0.5):
+               max_grad_norm_policy=0.5,
+               max_grad_norm_value=0.5):
         self.policy = policy
         self.optimizer = optimizer
-        self.cliprange = cliprange
+        self.cliprange_policy = cliprange_policy
+        self.cliprange_value = cliprange_value
         self.value_loss_coef = value_loss_coef
         self.explore_loss_coef = explore_loss_coef
-        self.max_grad_norm = max_grad_norm
+        self.max_grad_norm_policy = max_grad_norm_policy
+        self.max_grad_norm_value = max_grad_norm_value
 
     def policy_loss(self, trajectory, act):
         """ Computes and returns policy loss on a given trajectory. """
@@ -33,7 +37,7 @@ class PPO:
         import_samp_ratio = torch.exp(import_samp_ratio)
         loss_per_sample = import_samp_ratio * advantages
         # import_samp_ratio_clip = import_samp_ratio
-        import_samp_ratio_clip = torch.clamp(import_samp_ratio, 1 - self.cliprange, 1 + self.cliprange)
+        import_samp_ratio_clip = torch.clamp(import_samp_ratio, 1 - self.cliprange_policy, 1 + self.cliprange_policy)
         loss_per_sample_clip = import_samp_ratio_clip * advantages
         return -1 * torch.mean(torch.min(loss_per_sample, loss_per_sample_clip))
 
@@ -43,7 +47,7 @@ class PPO:
         values_old = torch.tensor(trajectory["values"], device=self.policy.agent.device).flatten()
         values = act['values']
         squares_vector_simple = (values - value_targets) ** 2
-        value_pred_clipped = values_old + (values - values_old).clamp(-self.cliprange, self.cliprange)
+        value_pred_clipped = values_old + (values - values_old).clamp(-self.cliprange_value, self.cliprange_value)
         squares_vector_clip = (value_pred_clipped - value_targets) ** 2
         # squares_vector_clip = squares_vector_simple
         return torch.mean(torch.max(squares_vector_simple, squares_vector_clip))
@@ -71,7 +75,9 @@ class PPO:
         loss = self.loss(trajectory)
         loss.backward()
 
-        grad_norm = torch.nn.utils.clip_grad_norm_(self.policy.agent.parameters(), self.max_grad_norm)
+        # grad_norm = torch.nn.utils.clip_grad_norm_(self.policy.agent.parameters(), self.max_grad_norm)
+        grad_norm_policy = torch.nn.utils.clip_grad_norm_(self.policy.agent.policy_parameters(), self.max_grad_norm_policy)
+        grad_norm_value = torch.nn.utils.clip_grad_norm_(self.policy.agent.value_parameters(), self.max_grad_norm_value)
 
         self.optimizer.step()
 

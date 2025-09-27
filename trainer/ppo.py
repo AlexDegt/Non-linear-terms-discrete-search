@@ -16,7 +16,7 @@ sys.path.append('../../')
 from utils import Timer
 from oracle import Oracle
 from .rl_tools import PerformanceEnv, NormalizeWrapper, TrajectoryNormalizeWrapper, EnvRunner, TrajectorySampler
-from .rl_tools import CNNSharedBackPolicy, MLPSharedBackPolicy, Policy
+from .rl_tools import CNNSharedBackPolicy, MLPSharedBackPolicy, MLPSeparatePolicy, Policy
 from .rl_tools import GAE, AsArray, NormalizeAdvantages, TrainingTracker
 from .rl_tools import PPO
 
@@ -106,16 +106,24 @@ def train_ppo(model: nn.Module, train_dataset: DataLoaderType, validate_dataset:
     # Define parameters of agent
     state_dim = len(model.delays[0]) * len(model.delays)
     delays_steps_num = 2 * max_delay_step + 1
-    hidden_shared_size = config["hidden_shared_size"]
-    hidden_shared_num = config["hidden_shared_num"]
+    hidden_policy_size = config["hidden_policy_size"]
+    hidden_policy_num = config["hidden_policy_num"]
+    hidden_value_size = config["hidden_value_size"]
+    hidden_value_num = config["hidden_value_num"]
+    # hidden_shared_size = config["hidden_shared_size"]
+    # hidden_shared_num = config["hidden_shared_num"]
     # kernel_shared_size = config["kernel_shared_size"]
-    hidden_separ_size = config["hidden_separ_size"]
-    hidden_separ_num = config["hidden_separ_num"]
+    # hidden_separ_size = config["hidden_separ_size"]
+    # hidden_separ_num = config["hidden_separ_num"]
     # kernel_separ_size = config["kernel_separ_size"]
-    agent = MLPSharedBackPolicy(state_dim, delays2change_num, delays_steps_num,
-                                hidden_shared_size, hidden_shared_num,
-                                hidden_separ_size, hidden_separ_num,
+    agent = MLPSeparatePolicy(state_dim, delays2change_num, delays_steps_num,
+                                hidden_policy_size, hidden_policy_num,
+                                hidden_value_size, hidden_value_num,
                                 model.device)
+    # agent = MLPSharedBackPolicy(state_dim, delays2change_num, delays_steps_num,
+    #                             hidden_shared_size, hidden_shared_num,
+    #                             hidden_separ_size, hidden_separ_num,
+    #                             model.device)
     agent.count_parameters()
 
     # agent.enumerate_parameters()
@@ -145,20 +153,30 @@ def train_ppo(model: nn.Module, train_dataset: DataLoaderType, validate_dataset:
     runner = make_ppo_runner(env, policy, num_runner_steps, gamma, lambda_, num_epochs_per_traj, num_minibatches)
 
     # Optimizer parameters
-    lr = config["lr"]
+    lr_policy = config["lr_policy"]
+    lr_value = config["lr_value"]
     eps = config["eps"]
-    optimizer = torch.optim.Adam(policy.agent.parameters(), lr=lr, eps=eps)
+    # optimizer = torch.optim.Adam(policy.agent.parameters(), lr=lr, eps=eps)
+    optimizer = torch.optim.Adam(
+        [
+            {"params": policy.agent.policy_parameters(), "lr": lr_policy},
+            {"params": policy.agent.value_parameters(),  "lr": lr_value},
+        ],
+        eps=eps,
+    )
     epochs = config["total_epoch_num"]
     # Learning rate scheduler
     lr_mult = lambda epoch: (1 - (epoch/epochs))
     sched = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_mult)
 
-    cliprange = config["cliprange"]
+    cliprange_policy = config["cliprange_policy"]
+    cliprange_value = config["cliprange_value"]
     value_loss_coef = config["value_loss_coef"]
     explore_loss_coef = config["explore_loss_coef"]
-    max_grad_norm = config["max_grad_norm"]
+    max_grad_norm_policy = config["max_grad_norm_policy"]
+    max_grad_norm_value = config["max_grad_norm_value"]
     # Define Proximal Policy Optimization RL optimizer
-    ppo = PPO(policy, optimizer, cliprange, value_loss_coef, explore_loss_coef, max_grad_norm)
+    ppo = PPO(policy, optimizer, cliprange_policy, cliprange_value, value_loss_coef, explore_loss_coef, max_grad_norm_policy, max_grad_norm_value)
 
     # Define statistics tracker
     tracker = TrainingTracker(env, ppo, save_path)
@@ -166,10 +184,10 @@ def train_ppo(model: nn.Module, train_dataset: DataLoaderType, validate_dataset:
     for epoch in range(epochs):
         t_epoch_start = time.time()
 
-        trajectory = runner.get_next()
+        trajectory, whole_trajectory = runner.get_next(return_whole=True)
         ppo.step(trajectory)
         sched.step()
-        tracker.accum_stat(trajectory)
+        tracker.accum_stat(trajectory, whole_trajectory)
 
         t_epoch_end = time.time()
         print(f"Epoch {epoch}, reward = {tracker.rewards[-1]}, time per epoch {t_epoch_end - t_epoch_start} s")
