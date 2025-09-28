@@ -2,7 +2,7 @@
 trial_descript: Training of 1D Chebyshev polynomial-based model
 # If trial_name == 'None', then name to the experiment is given automatically,
 # otherwise it is set name set by user 
-trial_name: test_8
+trial_name: test_7
 
 # trial_name: sgd_full_grad_adam_10k_epochs_4_pow_dim_mu_1e_3_stand_tx
 # trial_name: test
@@ -20,7 +20,7 @@ block_size: 106752 # 13344
 # Increase this parameter if you obtain out of memory error.
 chunk_num: 1
 dtype: complex128
-device: "cuda:3"
+device: "cuda:2"
 # dtype: complex64
 # Path to the folder with data
 data_path: '../../data/data2d.mat'
@@ -40,8 +40,8 @@ state_alpha: 0.0
 reward_alpha: 0.0
 
 # Parameters of MLP agent
-hidden_policy_size: 128
-hidden_policy_num: 4
+hidden_policy_size: 64
+hidden_policy_num: 3
 hidden_value_size: 128
 hidden_value_num: 3
 # hidden_shared_size: 128
@@ -58,7 +58,7 @@ lambda_: 0.95 # GAE lambda
 num_epochs_per_traj: 8 # Number of epochs per each trajectory
 num_minibatches: 16 # Number of mini-batches to divide whole trajectory into
 total_epoch_num: 30000 # Total number of epochs
-lr_policy: 0.0002 # Adam learning rate
+lr_policy: 0.0001 # Adam learning rate
 lr_value: 0.001 # Adam learning rate
 eps: 0.00001 # Adam epsilon
 

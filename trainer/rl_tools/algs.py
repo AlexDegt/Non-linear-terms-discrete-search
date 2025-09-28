@@ -34,7 +34,7 @@ class PPO:
             log_prob_ind_old = log_probs[:, j_delay, 0]
             log_prob_step_ind_old = log_probs[:, j_delay, 1]
             import_samp_ratio += log_prob_ind + log_prob_step_ind - log_prob_ind_old - log_prob_step_ind_old
-        import_samp_ratio = torch.exp(import_samp_ratio)
+        import_samp_ratio = torch.exp(import_samp_ratio / (2 * delays2change_num))
         loss_per_sample = import_samp_ratio * advantages
         # import_samp_ratio_clip = import_samp_ratio
         import_samp_ratio_clip = torch.clamp(import_samp_ratio, 1 - self.cliprange_policy, 1 + self.cliprange_policy)

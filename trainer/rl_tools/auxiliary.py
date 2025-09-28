@@ -82,8 +82,10 @@ class TrainingTracker:
         self.best_perform_list = []
         self.best_perform = 100
         self.best_delays = []
+        self.approx_kl_list = []
+        self.clip_fraction_list = []
     
-    def accum_stat(self, minibatch, trajectory):
+    def accum_stat(self, minibatch):
         self.accum_rewards(minibatch)
         self.accum_r2(minibatch)
         self.accum_entropy(minibatch)
@@ -200,10 +202,44 @@ class TrainingTracker:
                 np.save(os.path.join(self.save_path, "best_delays.npy"), np.asarray(self.best_delays))
                 torch.save(self.env.tomb_raider.state_dict(), os.path.join(self.save_path, "best_params.pt"))
 
-    # def approx_kl(self, minibatch):
-    #     with torch.no_grad():
-    #         act = self.ppo.policy.act(minibatch["observations"], training=True)
-    #         policy_loss = self.ppo.policy_loss(minibatch, act).item()
-    #         self.policy_loss.append(policy_loss)
-    #     if self.save_path is not None:
-    #         np.save(os.path.join(self.save_path, f"policy_loss.npy"), np.asarray(self.policy_loss))
+    def approx_kl(self, trajectory):
+        with torch.no_grad():
+            act = self.ppo.policy.act(trajectory["observations"], training=True)
+            actions = torch.tensor(trajectory["actions"], device=self.ppo.policy.agent.device)
+            log_probs = torch.tensor(trajectory["log_probs"], device=self.ppo.policy.agent.device)
+            policy = act['distribution']
+            delays2change_num = actions.shape[1]
+            approx_kl = 0
+            for j_delay in range(delays2change_num):
+                distr_ind, distr_step_ind = policy[j_delay]
+                log_prob_ind = distr_ind.log_prob(actions[:, j_delay, 0])
+                log_prob_step_ind = distr_step_ind.log_prob(actions[:, j_delay, 1])
+                log_prob_ind_old = log_probs[:, j_delay, 0]
+                log_prob_step_ind_old = log_probs[:, j_delay, 1]
+                approx_kl += log_prob_ind + log_prob_step_ind - log_prob_ind_old - log_prob_step_ind_old
+            approx_kl = (-1 * approx_kl / (2 * delays2change_num)).mean().item()
+            self.approx_kl_list.append(approx_kl)
+        if self.save_path is not None:
+            np.save(os.path.join(self.save_path, f"approx_kl.npy"), np.asarray(self.approx_kl_list))
+
+    def clip_fraction(self, trajectory):
+        eps = self.ppo.cliprange_policy
+        with torch.no_grad():
+            act = self.ppo.policy.act(trajectory["observations"], training=True)
+            actions = torch.tensor(trajectory["actions"], device=self.ppo.policy.agent.device)
+            log_probs = torch.tensor(trajectory["log_probs"], device=self.ppo.policy.agent.device)
+            policy = act['distribution']
+            delays2change_num = actions.shape[1]
+            import_samp_ratio = 0
+            for j_delay in range(delays2change_num):
+                distr_ind, distr_step_ind = policy[j_delay]
+                log_prob_ind = distr_ind.log_prob(actions[:, j_delay, 0])
+                log_prob_step_ind = distr_step_ind.log_prob(actions[:, j_delay, 1])
+                log_prob_ind_old = log_probs[:, j_delay, 0]
+                log_prob_step_ind_old = log_probs[:, j_delay, 1]
+                import_samp_ratio += log_prob_ind + log_prob_step_ind - log_prob_ind_old - log_prob_step_ind_old
+            import_samp_ratio = torch.exp(import_samp_ratio / (2 * delays2change_num))
+            clip_fraction = ((import_samp_ratio < 1.0 - eps) | (import_samp_ratio > 1.0 + eps)).float().mean().item()
+            self.clip_fraction_list.append(clip_fraction)
+        if self.save_path is not None:
+            np.save(os.path.join(self.save_path, f"clip_fraction.npy"), np.asarray(self.clip_fraction_list))

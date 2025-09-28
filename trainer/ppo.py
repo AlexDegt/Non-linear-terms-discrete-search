@@ -185,9 +185,11 @@ def train_ppo(model: nn.Module, train_dataset: DataLoaderType, validate_dataset:
         t_epoch_start = time.time()
 
         trajectory, whole_trajectory = runner.get_next(return_whole=True)
+        tracker.approx_kl(whole_trajectory)
+        tracker.clip_fraction(whole_trajectory)
         ppo.step(trajectory)
         sched.step()
-        tracker.accum_stat(trajectory, whole_trajectory)
+        tracker.accum_stat(trajectory)
 
         t_epoch_end = time.time()
         print(f"Epoch {epoch}, reward = {tracker.rewards[-1]}, time per epoch {t_epoch_end - t_epoch_start} s")
