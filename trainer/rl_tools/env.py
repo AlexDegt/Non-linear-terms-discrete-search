@@ -112,8 +112,8 @@ class PerformanceEnv(gym.Env):
         super().reset(seed=seed)
         self.step_curr = 1
         if start_mode == 'zeros':
-            # self.state = np.zeros((self.__delays_number,), dtype=int).tolist()
-            self.state = [-1, 0, 0]
+            self.state = np.zeros((self.__delays_number,), dtype=int).tolist()
+            # self.state = [-1, 0, 0]
         elif start_mode == 'random':
             self.state = self.state_space.sample()
         elif start_mode == 'continue':
@@ -142,10 +142,13 @@ class PerformanceEnv(gym.Env):
 
         for action_pair in action:
             delay_ind, delay_step_ind = action_pair
-            delay_step = delay_step_ind - self.__max_delay_step
+            steps = np.arange(-self.__max_delay_step, self.__max_delay_step + 1, 1)
+            steps = steps[steps != 0]
+            delay_step = steps[delay_step_ind]
             self.state[delay_ind] += delay_step
             # Clip state if its out of range after step
             self.state = np.clip(self.state, self.state_space.low, self.state_space.high)
+            # print(self.state)
         assert self.state_space.contains(self.state), f"Chosen state is out of state space."
 
         # Reshape delays according to their position in branches
