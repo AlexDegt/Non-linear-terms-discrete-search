@@ -112,7 +112,8 @@ class PerformanceEnv(gym.Env):
         super().reset(seed=seed)
         self.step_curr = 1
         if start_mode == 'zeros':
-            self.state = np.zeros((self.__delays_number,), dtype=int).tolist()
+            # self.state = np.zeros((self.__delays_number,), dtype=int).tolist()
+            self.state = [-1, 0, 0]
         elif start_mode == 'random':
             self.state = self.state_space.sample()
         elif start_mode == 'continue':

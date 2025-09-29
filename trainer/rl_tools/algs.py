@@ -145,3 +145,62 @@ class PPO:
               f"grad L_policy w.r.t. policy = {gn_policy2}\n",
               f"grad L_all w.r.t. shared = {gn_shared_all}\n",
               f"grad L_all w.r.t. all params = {gn_total}")
+
+class PolicyGradient:
+    def __init__(self, policy, optimizer,
+               explore_loss_coef=0.1,
+               max_grad_norm=0.5):
+        self.policy = policy
+        self.optimizer = optimizer
+        self.explore_loss_coef = explore_loss_coef
+        self.max_grad_norm = max_grad_norm
+
+    def policy_loss(self, trajectory, act):
+        """ Computes and returns policy loss on a given trajectory. """
+        actions = torch.tensor(trajectory["actions"], device=self.policy.agent.device)
+        returns = torch.tensor(trajectory["returns"], device=self.policy.agent.device)
+        policy = act['distribution']
+        delays2change_num = actions.shape[1]
+        log_policy = 0
+        for j_delay in range(delays2change_num):
+            distr_ind, distr_step_ind = policy[j_delay]
+            log_prob_ind = distr_ind.log_prob(actions[:, j_delay, 0])
+            log_prob_step_ind = distr_step_ind.log_prob(actions[:, j_delay, 1])
+            log_policy += log_prob_ind + log_prob_step_ind
+        # log_policy /= (2 * delays2change_num)
+        return -1 * torch.mean(log_policy * returns)
+
+    def explore_loss(self, trajectory, act):
+        """ Computes policy entropy on a given trajectory. """
+        actions = torch.tensor(trajectory["actions"], device=self.policy.agent.device)
+        policy = act['distribution']
+        entropy = 0
+        for distr_ind, distr_step_ind in policy:
+            entropy += distr_ind.entropy().mean() + distr_step_ind.entropy().mean()
+        return entropy
+
+    def loss(self, trajectory):
+        act = self.policy.act(trajectory["observations"], training=True)
+        policy_loss = self.policy_loss(trajectory, act)
+        explore_loss = self.explore_loss(trajectory, act)
+        return policy_loss - self.explore_loss_coef * explore_loss
+
+    def step(self, trajectory):
+        """ Computes the loss function and performs a single gradient step. """
+        self.optimizer.zero_grad()
+        
+        loss = self.loss(trajectory)
+        loss.backward()
+
+        grad_norm = torch.nn.utils.clip_grad_norm_(self.policy.agent.parameters(), self.max_grad_norm)
+
+        self.optimizer.step()
+
+    def grad_norm(self, params):
+        sqsum = 0
+        for p in params:
+            if p.grad is None:
+                continue
+            g = p.grad.detach()
+            sqsum += g.pow(2).sum().item()
+        return math.sqrt(sqsum + 1e-18)

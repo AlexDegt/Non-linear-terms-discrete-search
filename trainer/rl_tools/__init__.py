@@ -1,4 +1,4 @@
 from .env import PerformanceEnv, NormalizeWrapper, TrajectoryNormalizeWrapper, EnvRunner, TrajectorySampler
-from .policy import Policy, CNNSharedBackPolicy, MLPSharedBackPolicy, MLPSeparatePolicy
-from .auxiliary import GAE, NormalizeAdvantages, AsArray, TrainingTracker
-from .algs import PPO
+from .policy import Policy, PolicyActor, CNNSharedBackPolicy, MLPSharedBackPolicy, MLPSeparatePolicy, MLPSepDelayStep
+from .auxiliary import GAE, AccumReturn, NormalizeAdvantages, NormalizeReturns, AsArray, TrainingTracker
+from .algs import PPO, PolicyGradient

@@ -1,6 +1,7 @@
 from .ls import train_ls
 from .ols import train_ols
 from .ppo import train_ppo
+from .pg import train_pg
 from .rl_tools import PerformanceEnv, NormalizeWrapper, TrajectoryNormalizeWrapper, \
-    CNNSharedBackPolicy, MLPSharedBackPolicy, Policy, EnvRunner, GAE, TrajectorySampler, \
-    NormalizeAdvantages, PPO, TrainingTracker, MLPSeparatePolicy
+    CNNSharedBackPolicy, MLPSharedBackPolicy, Policy, PolicyActor, EnvRunner, GAE, AccumReturn, TrajectorySampler, \
+    NormalizeAdvantages, NormalizeReturns, PPO, PolicyGradient, TrainingTracker, MLPSeparatePolicy, MLPSepDelayStep
