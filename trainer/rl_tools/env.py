@@ -158,7 +158,7 @@ class PerformanceEnv(gym.Env):
             _, perform_db = self.__train_tomb_raider()
 
         # Reward design...
-        reward = (10 ** (-1 * perform_db / 10) / 25 - 0.5) / 100
+        reward = (10 ** (-1 * perform_db / 10) / 40 - 0.5) / 100
 
         # Store best performance and delays
         if perform_db < self.best_perform:
