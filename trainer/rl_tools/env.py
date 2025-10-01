@@ -8,10 +8,13 @@ from collections import defaultdict
 
 from typing import List, Tuple, Union, Callable, Iterable
 
-from copy import deepcopy
+from copy import deepcopy, copy
 import sys
 
+import pandas as pd
+
 RangeType = List[int]
+OptionalList = Union[None, List]
 
 @contextmanager
 def no_print():
@@ -59,13 +62,20 @@ class PerformanceEnv(gym.Env):
             delays2change_num (int): Number of delays, which required to be changed per each step.
             max_steps (int): Maximum number of steps in each episode.
             train_tomb_raider (partial function): Pointer to the function with fixed parameters.
+            start_mode (str): Flag, which shows how to start new trajectory:
+                start_mode == 'zeros', - zero delays,
+                start_mode == 'random', - delays from uniform distribution,
+                start_mode == 'continue' - continues from saved state. First trajectory - from zeros.
+                start_mode == 'same', - start each trajectory of init_delays.
+            init_delays (list, optional): Initial delays to start from each trajectory if start_mode=='same'.
     """
     def __init__(self, tomb_raider: nn.Module, delays_number: int, delays_range: RangeType, max_delay_step: int, delays2change_num: int, max_steps: int,
-                 train_tomb_raider):
+                 train_tomb_raider, start_mode: str='zeros', init_delays: OptionalList=None):
         super(PerformanceEnv, self).__init__()
 
         assert len(delays_range) == 2 and all([type(delay) == int for delay in delays_range]), "Delays range must include 2 integers."
         assert 0 < delays2change_num <= delays_number, "Number of delays to be changed per each step must higher than 0 and not higher than number of delays."
+        assert delays_range[0] < delays_range[1]
 
         # Save environment parameters
         self.__delays_number = delays_number
@@ -88,8 +98,20 @@ class PerformanceEnv(gym.Env):
         ))
         self.action_space = spaces.Tuple([single_pair_space for _ in range(delays2change_num)])
         
+        if start_mode == 'same':
+            assert init_delays is not None, "Please, define init_delays for start_mode=\'same\'."
+            assert type(init_delays) == list, f"init_delays must of a list type, but {type(init_delays)} is given."
+
+        self.init_delays = init_delays
+        self.start_mode = start_mode
+
         # Internal state
-        self.state = np.zeros(delays_number, dtype=int).tolist()
+        if init_delays is not None:
+            self.state = sum(init_delays, [])
+            assert len(self.state) == delays_number, f"Number of delays in init_delays must be the same branch_number * delays_per_branch."
+            self.init_delays = deepcopy(self.state)
+        else:
+            self.state = np.zeros(delays_number, dtype=int).tolist()
         self.step_curr = 1 # Current step number
         self.max_steps = max_steps
 
@@ -97,27 +119,27 @@ class PerformanceEnv(gym.Env):
         self.best_perform = 100
         self.best_delays = []
 
-    def reset(self, seed=None, start_mode='zeros'):
+        # Dataframe to save delays sets already researched by Oracle
+        self.oracle_buffer = pd.DataFrame(columns=['state', 'reward'])
+        self.oracle_call_num = 0
+
+    def reset(self, seed=None):
         """
             Resets environment
             
             Args:
-                seed (int): random seed.
-                start_mode (str): Flag, which shows how to start new trajectory:
-                    start_mode == 'zeros', - zero delays,
-                    start_mode == 'random', - delays from uniform distribution,
-                    start_mode == 'continue' - continues from saved state. First trajectory - from zeros.
-                    
+                seed (int): random seed.                    
         """
         super().reset(seed=seed)
         self.step_curr = 1
-        if start_mode == 'zeros':
+        if self.start_mode == 'zeros':
             self.state = np.zeros((self.__delays_number,), dtype=int).tolist()
-            # self.state = [-1, 0, 0]
-        elif start_mode == 'random':
+        elif self.start_mode == 'random':
             self.state = self.state_space.sample()
-        elif start_mode == 'continue':
+        elif self.start_mode == 'continue':
             pass
+        elif self.start_mode == 'same':
+            self.state = copy(self.init_delays)
         return self.state, {}
 
     def step(self, action):
@@ -145,29 +167,43 @@ class PerformanceEnv(gym.Env):
             steps = np.arange(-self.__max_delay_step, self.__max_delay_step + 1, 1)
             steps = steps[steps != 0]
             delay_step = steps[delay_step_ind]
-            self.state[delay_ind] += delay_step
-            # Clip state if its out of range after step
-            self.state = np.clip(self.state, self.state_space.low, self.state_space.high)
             # print(self.state)
-        assert self.state_space.contains(self.state), f"Chosen state is out of state space."
-
-        # Reshape delays according to their position in branches
-        delays = np.array(self.state).reshape(-1, self.__delays_in_branch).tolist()
-
-        # Load delays in model
-        self.tomb_raider.set_delays(delays)
-
-        # Train tomb raider in a search of high performance!
-        with no_print():
-            _, perform_db = self.__train_tomb_raider()
-
-        # Reward design...
-        reward = (10 ** (-1 * perform_db / 10) / 40 - 0.5) / 100
-
-        # Store best performance and delays
-        if perform_db < self.best_perform:
-            self.best_perform = perform_db
-            self.best_delays = delays
+            # Clip state if its out of range after step. Clip is not good for training
+            # self.state = np.clip(self.state, self.state_space.low, self.state_space.high)
+            # Bounce from the bound
+            L = self.state_space.low[0]
+            U = self.state_space.high[0]
+            while self.state[delay_ind] + delay_step < L or self.state[delay_ind] + delay_step > U:
+                if self.state[delay_ind] + delay_step < L:
+                    delay_step = 2 * L - (2 * self.state[delay_ind] + delay_step)
+                elif self.state[delay_ind] + delay_step > U:
+                    delay_step = 2 * U - (2 * self.state[delay_ind] + delay_step)
+            self.state[delay_ind] += delay_step
+            # print(self.state, action)
+        assert self.state_space.contains(np.asarray(self.state)), f"Chosen state is out of state space."
+        # Search reward inside the oracle buffer.
+        # If ther if no such state in buffer, call oracle
+        if self.state in self.oracle_buffer['state'].tolist():
+            reward = self.oracle_buffer.loc[self.oracle_buffer["state"].apply(lambda x: x == self.state), "reward"].iloc[0]
+        else:        
+            # Reshape delays according to their position in branches
+            delays = np.array(self.state).reshape(-1, self.__delays_in_branch).tolist()
+            # Load delays in model
+            self.tomb_raider.set_delays(delays)
+            # Train tomb raider in a search of high performance!
+            with no_print():
+                _, perform_db = self.__train_tomb_raider()
+            # Reward design...
+            reward = (10 ** (-1 * perform_db / 10) / 40 - 0.5) / 100
+            self.oracle_buffer = pd.concat([
+                self.oracle_buffer,
+                pd.DataFrame([{'state': copy(self.state), 'reward': reward}])
+            ], ignore_index=True)
+            # Store best performance and delays
+            if perform_db < self.best_perform:
+                self.best_perform = perform_db
+                self.best_delays = delays
+        # print(self.state)
 
         return self.state, reward, terminated, truncated, {}
 
@@ -305,10 +341,9 @@ class EnvRunner:
         self.state["env_steps"] = self.nsteps
 
         for i in range(self.nsteps):
-            observations.append(self.state["latest_observation"])
-            # print(self.state["latest_observation"])
-            act = self.policy.act(self.state["latest_observation"])
-            # print(act['values'])
+            observations.append(deepcopy(self.state["latest_observation"]))
+            norm_param = max(max(abs(self.env.state_space.high)), max(abs(self.env.state_space.low)))
+            act = self.policy.act(observations[-1] / norm_param)
             if "actions" not in act:
                 raise ValueError("result of policy.act must contain 'actions' "
                                  f"but has keys {list(act.keys())}")
@@ -316,6 +351,9 @@ class EnvRunner:
                 trajectory[key].append(val)
 
             obs, rew, terminated, truncated, _ = self.env.step(trajectory['actions'][-1])
+            # print(trajectory['actions'][-1])
+            # print(obs)
+            # print(rew)
             done = np.logical_or(terminated, truncated)
             self.state["latest_observation"] = obs
             rewards.append(rew)
@@ -333,6 +371,11 @@ class EnvRunner:
             rewards=rewards,
             resets=resets)
         trajectory["state"] = self.state
+
+        # print(trajectory["observations"])
+        # print(trajectory["actions"])
+        # print(trajectory["rewards"])
+        # sys.exit()
 
         for transform in self.transforms:
             transform(trajectory)

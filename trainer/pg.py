@@ -16,7 +16,7 @@ sys.path.append('../../')
 from utils import Timer
 from oracle import Oracle
 from .rl_tools import PerformanceEnv, NormalizeWrapper, TrajectoryNormalizeWrapper, EnvRunner, TrajectorySampler
-from .rl_tools import MLPSepDelayStep, PolicyActor
+from .rl_tools import MLPSepDelayStep, MLPSepDelaySepStep, PolicyActor
 from .rl_tools import AccumReturn, AsArray, NormalizeReturns, TrainingTracker
 from .rl_tools import PolicyGradient
 
@@ -90,13 +90,15 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
     max_delay_step = config["max_delay_step"]
     delays2change_num = config["delays2change_num"]
     max_steps = config["max_steps"]
+    start_mode = config["start_mode"]
+    init_delays = config["init_delays"]
     # Function to calculate MSE reward
     train_tomb_raider = partial(train_ls, model, train_dataset, train_dataset, train_dataset, loss_fn, 
                                         quality_criterion, config, batch_to_tensors, chunk_num, 
                                         save_path, exp_name, weight_names)
 
     # Define environment for best MSE search
-    env = PerformanceEnv(model, delays_number, delays_range, max_delay_step, delays2change_num, max_steps, train_tomb_raider)
+    env = PerformanceEnv(model, delays_number, delays_range, max_delay_step, delays2change_num, max_steps, train_tomb_raider, start_mode, init_delays)
 
     # Define normalization wrapper for environment
     state_alpha = config["state_alpha"]
@@ -106,17 +108,21 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
     # Define parameters of agent
     state_dim = len(model.delays[0]) * len(model.delays)
     delays_steps_num = 2 * max_delay_step# + 1
-    hidden_shared_size = config["hidden_shared_size"]
-    hidden_shared_num = config["hidden_shared_num"]
+    # hidden_shared_size = config["hidden_shared_size"]
+    # hidden_shared_num = config["hidden_shared_num"]
     hidden_delay_ind_size = config["hidden_delay_ind_size"]
     hidden_delay_ind_num = config["hidden_delay_ind_num"]
     hidden_delay_step_size = config["hidden_delay_step_size"]
     hidden_delay_step_num = config["hidden_delay_step_num"]
-    agent = MLPSepDelayStep(state_dim, delays2change_num, delays_steps_num,
-                            hidden_shared_size, hidden_shared_num,
+    agent = MLPSepDelaySepStep(state_dim, delays2change_num, delays_steps_num,
                             hidden_delay_ind_size, hidden_delay_ind_num,
                             hidden_delay_step_size, hidden_delay_step_num,
                             model.device)
+    # agent = MLPSepDelayStep(state_dim, delays2change_num, delays_steps_num,
+    #                         hidden_shared_size, hidden_shared_num,
+    #                         hidden_delay_ind_size, hidden_delay_ind_num,
+    #                         hidden_delay_step_size, hidden_delay_step_num,
+    #                         model.device)
     agent.count_parameters()
     # agent.enumerate_parameters()
 
@@ -135,8 +141,8 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
         runner_transforms = [AsArray(), AccumReturn(policy, gamma=gamma)]
         runner = EnvRunner(env, policy, num_runner_steps, transforms=runner_transforms)
 
-        # sampler_transforms = [NormalizeReturns()]
-        sampler_transforms = []
+        sampler_transforms = [NormalizeReturns()]
+        # sampler_transforms = []
         sampler = TrajectorySampler(runner, num_epochs=num_epochs, 
                                 num_minibatches=num_minibatches,
                                 transforms=sampler_transforms)
@@ -151,7 +157,8 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
     epochs = config["total_epoch_num"]
     # Learning rate scheduler
     # lr_mult = lambda epoch: (1 - (epoch/epochs))
-    lr_mult = lambda epoch: 1 - (1 - 1e-3) * (epoch / epochs)
+    # lr_mult = lambda epoch: 1 - (1 - 1e-3) * (epoch / epochs)
+    lr_mult = lambda epoch: 1
     sched = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_mult)
 
     explore_loss_coef = config["explore_loss_coef"]
@@ -168,6 +175,27 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
 
         trajectory, whole_trajectory = runner.get_next(return_whole=True)
         tracker.approx_kl(whole_trajectory)
+        tracker.save_oracle_buffer()
+        # print(whole_trajectory['observations'].tolist())
+        # print(whole_trajectory['actions'])
+        # print(trajectory['observations'].tolist()[0])
+        # print(trajectory['observations'].tolist()[1])
+        # print(trajectory['observations'].tolist()[0] == [0.0, 0.0, 1.0])
+        # print([0.0, 0.0, 1.0], trajectory['observations'].tolist()[0])
+        # print([0.0, 0.0, 1.0], trajectory['observations'].tolist()[1])
+        # sys.exit()
+        # if [0.0, 0.0, 1.0] == trajectory['observations'].tolist()[1]:
+        #     print(trajectory['observations'].tolist())
+        #     print(trajectory['actions'])
+        #     print(trajectory['returns'])
+        #     sys.exit()
+        # if epoch < 1:
+        #     # np.save("actions.npy", np.asarray(whole_trajectory['actions']))
+        #     # np.save("observations.npy", np.asarray(whole_trajectory['observations']))
+        #     np.save("returns.npy", np.asarray(whole_trajectory['returns']))
+        #     np.save("rewards.npy", np.asarray(whole_trajectory['rewards']))
+        # else:
+        #     sys.exit()
         pg.step(trajectory)
         sched.step()
         tracker.accum_stat(trajectory)

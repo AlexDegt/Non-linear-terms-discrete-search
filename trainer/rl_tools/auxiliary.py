@@ -52,16 +52,15 @@ class AccumReturn:
 
         rewards = np.asarray(trajectory["rewards"], dtype=np.float32).flatten()
         dones   = np.asarray(trajectory["resets"],  dtype=np.float32).flatten()
-        np.save("rew.npy", rewards)
         T = len(rewards)
         returns = np.zeros_like(rewards, dtype=np.float32)
 
         R = 0.0
         for t in range(len(rewards)-1, -1, -1):
+            print(len(rewards))
+            # sys.exit()
             R = rewards[t] + gamma * R * (1.0 - dones[t])
             returns[t] = R
-        
-        # print(returns)
 
         trajectory["returns"] = returns.astype(np.float32)
         return trajectory
@@ -80,6 +79,7 @@ class NormalizeReturns:
         returns = np.asarray(trajectory["returns"]).flatten()
         var = np.var(returns)
         mean = np.mean(returns)
+        # print((returns - mean) / np.sqrt(var + eps))
         trajectory["returns"] = (returns - mean) / np.sqrt(var + eps)
 
 class AsArray:
@@ -124,6 +124,9 @@ class TrainingTracker:
 
         self.policy_ind_distr = []
         self.policy_step_distr = []
+
+    def save_oracle_buffer(self):
+        self.env.oracle_buffer.to_excel(os.path.join(self.save_path, "oracle_buffer.xlsx"), sheet_name="Oracle buffer", index=True)
     
     def accum_stat(self, minibatch):
 
