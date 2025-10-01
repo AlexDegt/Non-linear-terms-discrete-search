@@ -57,8 +57,6 @@ class AccumReturn:
 
         R = 0.0
         for t in range(len(rewards)-1, -1, -1):
-            print(len(rewards))
-            # sys.exit()
             R = rewards[t] + gamma * R * (1.0 - dones[t])
             returns[t] = R
 
@@ -80,7 +78,8 @@ class NormalizeReturns:
         var = np.var(returns)
         mean = np.mean(returns)
         # print((returns - mean) / np.sqrt(var + eps))
-        trajectory["returns"] = (returns - mean) / np.sqrt(var + eps)
+        # trajectory["returns"] = (returns - mean) / np.sqrt(var + eps)
+        trajectory["returns"] = returns * 100
 
 class AsArray:
     """ 

@@ -193,6 +193,8 @@ class PolicyGradient:
         loss.backward()
 
         grad_norm = torch.nn.utils.clip_grad_norm_(self.policy.agent.parameters(), self.max_grad_norm)
+        # print(grad_norm)
+        # sys.exit()
 
         self.optimizer.step()
 

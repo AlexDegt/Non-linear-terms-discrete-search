@@ -319,7 +319,7 @@ class MLPSeparatePolicy(nn.Module):
 class MLPSepDelaySepStep(nn.Module):
     """
         Single-head policy with separate layers for delays indices and steps.
-        Model based on fully connected layers.
+        Model based on fully connected layers with LayerNorm.
         Input is always (channels, length) without batch dimension.
     """
     def __init__(self, state_dim, delays2change_num, delays_steps_num,
@@ -332,44 +332,66 @@ class MLPSepDelaySepStep(nn.Module):
         self.delays2change_num = delays2change_num
         self.delays_steps_num = delays_steps_num
 
-        self.act = torch.nn.SiLU()
-        # self.act = torch.nn.Tanh()
+        self.act = torch.nn.Tanh()
 
         # Delay indices part
         self.delay_range = nn.ModuleList()
+        self.delay_range_ln = nn.ModuleList()
         for j_ind in range(delays2change_num):
             hidden = nn.ModuleList()
+            norms = nn.ModuleList()
             for j in range(hidden_delay_ind_num):
                 in_ch = state_dim if j == 0 else hidden_delay_ind_size
                 out_ch = state_dim if j == hidden_delay_ind_num - 1 else hidden_delay_ind_size
                 hidden.append(nn.Linear(in_ch, out_ch, device=device))
+                if j != hidden_delay_ind_num - 1:
+                    norms.append(nn.LayerNorm(out_ch, elementwise_affine=True, device=device))
             self.delay_range.append(hidden)
-        
+            self.delay_range_ln.append(norms)
+
         # Delay steps part
         self.delay_steps = nn.ModuleList()
+        self.delay_steps_ln = nn.ModuleList()
         for j_step in range(delays2change_num):
             hidden = nn.ModuleList()
+            norms = nn.ModuleList()
             for j in range(hidden_delay_step_num):
                 in_ch = state_dim if j == 0 else hidden_delay_step_size
                 out_ch = delays_steps_num if j == hidden_delay_step_num - 1 else hidden_delay_step_size
                 hidden.append(nn.Linear(in_ch, out_ch, device=device))
+                if j != hidden_delay_step_num - 1:
+                    norms.append(nn.LayerNorm(out_ch, elementwise_affine=True, device=device))
             self.delay_steps.append(hidden)
+            self.delay_steps_ln.append(norms)
 
         self.policy_out = [self.delay_range, self.delay_steps]
 
     def forward(self, x):
         # x: (length, channels)
-
         policy = []
-        for p_out in self.policy_out:
-            for branch in p_out:
-                x_policy = x.clone()
-                for j_hidden, layer in enumerate(branch):
-                    if j_hidden != len(branch) - 1:
-                        x_policy = self.act(layer(x_policy)) # (length, out_dim)
-                    else:
-                        logits = layer(x_policy) # (length, out_dim)
-                policy.append(torch.distributions.Categorical(logits=logits))
+        # delay_range
+        for branch, norms in zip(self.delay_range, self.delay_range_ln):
+            x_policy = x.clone()
+            for j_hidden, layer in enumerate(branch):
+                if j_hidden != len(branch) - 1:
+                    x_policy = layer(x_policy)
+                    x_policy = norms[j_hidden](x_policy)
+                    x_policy = self.act(x_policy)
+                else:
+                    logits = layer(x_policy)
+            policy.append(torch.distributions.Categorical(logits=logits))
+
+        # delay_steps
+        for branch, norms in zip(self.delay_steps, self.delay_steps_ln):
+            x_policy = x.clone()
+            for j_hidden, layer in enumerate(branch):
+                if j_hidden != len(branch) - 1:
+                    x_policy = layer(x_policy)
+                    x_policy = norms[j_hidden](x_policy)
+                    x_policy = self.act(x_policy)
+                else:
+                    logits = layer(x_policy)
+            policy.append(torch.distributions.Categorical(logits=logits))
 
         return policy
 
@@ -389,6 +411,80 @@ class MLPSepDelaySepStep(nn.Module):
         else:
             params = [(name, p.data.size()) for name, p in self.named_parameters()]
             print(f"Agent parameters {params}")
+
+# class MLPSepDelaySepStep(nn.Module):
+#     """
+#         Single-head policy with separate layers for delays indices and steps.
+#         Model based on fully connected layers.
+#         Input is always (channels, length) without batch dimension.
+#     """
+#     def __init__(self, state_dim, delays2change_num, delays_steps_num,
+#                  hidden_delay_ind_size=128, hidden_delay_ind_num=2,
+#                  hidden_delay_step_size=128, hidden_delay_step_num=2,
+#                  device='cuda'):
+#         super().__init__()
+#         self.device = device
+#         self.state_dim = state_dim
+#         self.delays2change_num = delays2change_num
+#         self.delays_steps_num = delays_steps_num
+
+#         # self.act = torch.nn.SiLU()
+#         self.act = torch.nn.Tanh()
+
+#         # Delay indices part
+#         self.delay_range = nn.ModuleList()
+#         for j_ind in range(delays2change_num):
+#             hidden = nn.ModuleList()
+#             for j in range(hidden_delay_ind_num):
+#                 in_ch = state_dim if j == 0 else hidden_delay_ind_size
+#                 out_ch = state_dim if j == hidden_delay_ind_num - 1 else hidden_delay_ind_size
+#                 hidden.append(nn.Linear(in_ch, out_ch, device=device))
+#             self.delay_range.append(hidden)
+        
+#         # Delay steps part
+#         self.delay_steps = nn.ModuleList()
+#         for j_step in range(delays2change_num):
+#             hidden = nn.ModuleList()
+#             for j in range(hidden_delay_step_num):
+#                 in_ch = state_dim if j == 0 else hidden_delay_step_size
+#                 out_ch = delays_steps_num if j == hidden_delay_step_num - 1 else hidden_delay_step_size
+#                 hidden.append(nn.Linear(in_ch, out_ch, device=device))
+#             self.delay_steps.append(hidden)
+
+#         self.policy_out = [self.delay_range, self.delay_steps]
+
+#     def forward(self, x):
+#         # x: (length, channels)
+
+#         policy = []
+#         for p_out in self.policy_out:
+#             for branch in p_out:
+#                 x_policy = x.clone()
+#                 for j_hidden, layer in enumerate(branch):
+#                     if j_hidden != len(branch) - 1:
+#                         x_policy = self.act(layer(x_policy)) # (length, out_dim)
+#                     else:
+#                         logits = layer(x_policy) # (length, out_dim)
+#                 policy.append(torch.distributions.Categorical(logits=logits))
+
+#         return policy
+
+#     def count_parameters(self, trainable=False):
+#         if trainable:
+#             param_num = sum(p.numel() for p in self.parameters() if p.requires_grad)
+#             print(f"Total agent trainable parameters number {param_num}")
+#         else:
+#             param_num = sum(p.numel() for p in self.parameters())
+#             print(f"Total agent parameters number {param_num}")
+#         return param_num
+
+#     def enumerate_parameters(self, trainable=False):
+#         if trainable:
+#             params = [(name, p.data.size()) for name, p in self.named_parameters() if p.requires_grad]
+#             print(f"Agent trainable parameters {params}")
+#         else:
+#             params = [(name, p.data.size()) for name, p in self.named_parameters()]
+#             print(f"Agent parameters {params}")
 
 class MLPSepDelayStep(nn.Module):
     """

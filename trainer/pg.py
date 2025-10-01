@@ -157,8 +157,8 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
     epochs = config["total_epoch_num"]
     # Learning rate scheduler
     # lr_mult = lambda epoch: (1 - (epoch/epochs))
-    # lr_mult = lambda epoch: 1 - (1 - 1e-3) * (epoch / epochs)
-    lr_mult = lambda epoch: 1
+    lr_mult = lambda epoch: 1 - (1 - 1e-3) * (epoch / epochs)
+    # lr_mult = lambda epoch: 1
     sched = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_mult)
 
     explore_loss_coef = config["explore_loss_coef"]
@@ -176,6 +176,7 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
         trajectory, whole_trajectory = runner.get_next(return_whole=True)
         tracker.approx_kl(whole_trajectory)
         tracker.save_oracle_buffer()
+        # print(trajectory)
         # print(whole_trajectory['observations'].tolist())
         # print(whole_trajectory['actions'])
         # print(trajectory['observations'].tolist()[0])
