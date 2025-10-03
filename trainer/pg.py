@@ -9,6 +9,7 @@ from collections import defaultdict
 
 from .ls import train_ls
 import time
+from copy import deepcopy
 
 import sys, os
 sys.path.append('../../')
@@ -16,7 +17,7 @@ sys.path.append('../../')
 from utils import Timer
 from oracle import Oracle
 from .rl_tools import PerformanceEnv, NormalizeWrapper, TrajectoryNormalizeWrapper, EnvRunner, TrajectorySampler
-from .rl_tools import MLPSepDelayStep, MLPSepDelaySepStep, PolicyActor
+from .rl_tools import MLPSepDelayStep, MLPSepDelaySepStep, MLPSepDelaySepStepStepID, MLPConditionalStep, PolicyActor, Policy_v1_3
 from .rl_tools import AccumReturn, AsArray, NormalizeReturns, TrainingTracker
 from .rl_tools import PolicyGradient
 
@@ -105,6 +106,12 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
     reward_alpha = config["reward_alpha"]
     env = NormalizeWrapper(env, state_alpha, reward_alpha)
 
+    # General training parameters
+    num_runner_steps = config["num_runner_steps"]
+    gamma = config["gamma"]
+    num_epochs_per_traj = 1
+    num_minibatches = config["num_minibatches"]
+
     # Define parameters of agent
     state_dim = len(model.delays[0]) * len(model.delays)
     delays_steps_num = 2 * max_delay_step# + 1
@@ -114,26 +121,27 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
     hidden_delay_ind_num = config["hidden_delay_ind_num"]
     hidden_delay_step_size = config["hidden_delay_step_size"]
     hidden_delay_step_num = config["hidden_delay_step_num"]
-    agent = MLPSepDelaySepStep(state_dim, delays2change_num, delays_steps_num,
-                            hidden_delay_ind_size, hidden_delay_ind_num,
-                            hidden_delay_step_size, hidden_delay_step_num,
-                            model.device)
-    # agent = MLPSepDelayStep(state_dim, delays2change_num, delays_steps_num,
+    stepid_embed_size = config["stepid_embed_size"]
+    ind_choice_embed_size = config["ind_choice_embed_size"]
+    hidden_shared_size = config["hidden_shared_size"]
+    hidden_shared_num = config["hidden_shared_num"]
+    # agent = MLPConditionalStep(state_dim, delays2change_num, delays_steps_num,
+    #                         num_runner_steps, stepid_embed_size, ind_choice_embed_size,
     #                         hidden_shared_size, hidden_shared_num,
     #                         hidden_delay_ind_size, hidden_delay_ind_num,
     #                         hidden_delay_step_size, hidden_delay_step_num,
     #                         model.device)
+    agent = MLPSepDelaySepStepStepID(state_dim, delays2change_num, delays_steps_num,
+                            num_runner_steps, stepid_embed_size,
+                            hidden_delay_ind_size, hidden_delay_ind_num,
+                            hidden_delay_step_size, hidden_delay_step_num,
+                            model.device)
     agent.count_parameters()
     # agent.enumerate_parameters()
 
     # Policy: different returns for trajectory sampling and agent training
     policy = PolicyActor(agent)
-
-    # General training parameters
-    num_runner_steps = config["num_runner_steps"]
-    gamma = config["gamma"]
-    num_epochs_per_traj = 1
-    num_minibatches = config["num_minibatches"]
+    # policy = Policy_v1_3(agent)
 
     def make_ppo_runner(env, policy, num_runner_steps=2048, gamma=0.99, 
                         num_epochs=10, num_minibatches=32):
@@ -141,8 +149,8 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
         runner_transforms = [AsArray(), AccumReturn(policy, gamma=gamma)]
         runner = EnvRunner(env, policy, num_runner_steps, transforms=runner_transforms)
 
-        sampler_transforms = [NormalizeReturns()]
-        # sampler_transforms = []
+        # sampler_transforms = [NormalizeReturns()]
+        sampler_transforms = []
         sampler = TrajectorySampler(runner, num_epochs=num_epochs, 
                                 num_minibatches=num_minibatches,
                                 transforms=sampler_transforms)
@@ -157,13 +165,13 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
     epochs = config["total_epoch_num"]
     # Learning rate scheduler
     # lr_mult = lambda epoch: (1 - (epoch/epochs))
-    lr_mult = lambda epoch: 1 - (1 - 1e-3) * (epoch / epochs)
-    # lr_mult = lambda epoch: 1
+    # lr_mult = lambda epoch: 1 - (1 - 1e-3) * (epoch / epochs)
+    lr_mult = lambda epoch: 1
     sched = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_mult)
 
     explore_loss_coef = config["explore_loss_coef"]
     max_grad_norm = config["max_grad_norm"]
-    # Define Proximal Policy Optimization RL optimizer
+    # Define Policy Gradient RL optimizer
     pg = PolicyGradient(policy, optimizer, explore_loss_coef, max_grad_norm)
 
     # Define statistics tracker
@@ -173,36 +181,25 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
     for epoch in range(epochs):
         t_epoch_start = time.time()
 
-        trajectory, whole_trajectory = runner.get_next(return_whole=True)
-        tracker.approx_kl(whole_trajectory)
+        for j_traj in range(3):
+            trajectory, whole_trajectory = runner.get_next(return_whole=True)
+            if j_traj == 0:
+                trajectory_batch = deepcopy(trajectory)
+            for key, val in trajectory_batch.items():
+                if key != 'state' and key != 'latest_observation' and key != 'env_steps':
+                    trajectory_batch[key] = np.concatenate((trajectory_batch[key], trajectory[key]), axis=0)
+
+        norm = NormalizeReturns()
+        norm(trajectory_batch)
+
         tracker.save_oracle_buffer()
-        # print(trajectory)
-        # print(whole_trajectory['observations'].tolist())
-        # print(whole_trajectory['actions'])
-        # print(trajectory['observations'].tolist()[0])
-        # print(trajectory['observations'].tolist()[1])
-        # print(trajectory['observations'].tolist()[0] == [0.0, 0.0, 1.0])
-        # print([0.0, 0.0, 1.0], trajectory['observations'].tolist()[0])
-        # print([0.0, 0.0, 1.0], trajectory['observations'].tolist()[1])
-        # sys.exit()
-        # if [0.0, 0.0, 1.0] == trajectory['observations'].tolist()[1]:
-        #     print(trajectory['observations'].tolist())
-        #     print(trajectory['actions'])
-        #     print(trajectory['returns'])
-        #     sys.exit()
-        # if epoch < 1:
-        #     # np.save("actions.npy", np.asarray(whole_trajectory['actions']))
-        #     # np.save("observations.npy", np.asarray(whole_trajectory['observations']))
-        #     np.save("returns.npy", np.asarray(whole_trajectory['returns']))
-        #     np.save("rewards.npy", np.asarray(whole_trajectory['rewards']))
-        # else:
-        #     sys.exit()
-        pg.step(trajectory)
+
+        pg.step(trajectory_batch)
         sched.step()
-        tracker.accum_stat(trajectory)
+        tracker.accum_stat(trajectory_batch)
 
         t_epoch_end = time.time()
-        print(f"Epoch {epoch}, reward = {tracker.rewards[-1]}, time per epoch {t_epoch_end - t_epoch_start} s")
+        print(f"Epoch {epoch}, reward mean = {tracker.rewards_mean[-1]:.5f}, time per epoch {(t_epoch_end - t_epoch_start):.3f} s")
 
     general_timer.__exit__()
     print(f"Total time elapsed: {general_timer.interval} s")

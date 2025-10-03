@@ -180,7 +180,9 @@ class PolicyGradient:
         return entropy
 
     def loss(self, trajectory):
-        act = self.policy.act(trajectory["observations"], training=True)
+        inputs = {"state": trajectory["observations"],
+                  "time": trajectory["time_steps"]}
+        act = self.policy.act(inputs, training=True)
         policy_loss = self.policy_loss(trajectory, act)
         explore_loss = self.explore_loss(trajectory, act)
         return policy_loss - self.explore_loss_coef * explore_loss
@@ -192,6 +194,7 @@ class PolicyGradient:
         loss = self.loss(trajectory)
         loss.backward()
 
+        # _ = self.scale_grad_norm(self.policy.agent.parameters(), 0.5)
         grad_norm = torch.nn.utils.clip_grad_norm_(self.policy.agent.parameters(), self.max_grad_norm)
         # print(grad_norm)
         # sys.exit()
@@ -206,3 +209,10 @@ class PolicyGradient:
             g = p.grad.detach()
             sqsum += g.pow(2).sum().item()
         return math.sqrt(sqsum + 1e-18)
+
+    def scale_grad_norm(self, params, target=0.5, eps=1e-6):
+        tot = (sum((p.grad.detach()**2).sum() for p in params if p.grad is not None))**0.5
+        s = target / (tot + eps)
+        for p in params:
+            if p.grad is not None: p.grad.mul_(s)
+        return float(tot)

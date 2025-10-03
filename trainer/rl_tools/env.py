@@ -153,6 +153,8 @@ class PerformanceEnv(gym.Env):
                     truncated is True, is maximum number of steps is achieved,
                     terminated is always False, since agent can walk in the environment without limits.
         """
+        print(action)
+        sys.exit()
         assert self.action_space.contains(action), f"Chosen action is out of action space."
 
         terminated = False
@@ -338,12 +340,16 @@ class EnvRunner:
         observations = []
         rewards = []
         resets = []
+        time_steps = []
         self.state["env_steps"] = self.nsteps
 
         for i in range(self.nsteps):
             observations.append(deepcopy(self.state["latest_observation"]))
+            time_steps.append(i)
             norm_param = max(max(abs(self.env.state_space.high)), max(abs(self.env.state_space.low)))
-            act = self.policy.act(observations[-1] / norm_param)
+            inputs = {"state": observations[-1] / norm_param,
+                      "time": [time_steps[-1]]}
+            act = self.policy.act(inputs)
             if "actions" not in act:
                 raise ValueError("result of policy.act must contain 'actions' "
                                  f"but has keys {list(act.keys())}")
@@ -369,7 +375,8 @@ class EnvRunner:
         trajectory.update(
             observations=observations,
             rewards=rewards,
-            resets=resets)
+            resets=resets,
+            time_steps=time_steps)
         trajectory["state"] = self.state
 
         # print(trajectory["observations"])

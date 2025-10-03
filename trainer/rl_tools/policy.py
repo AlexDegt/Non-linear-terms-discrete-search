@@ -2,6 +2,7 @@ import torch
 import numpy as np
 from torch import nn
 from torch.nn import functional as F
+from torch.distributions import Categorical
 import sys
 
 class CNNSharedBackPolicy(nn. Module):
@@ -333,6 +334,7 @@ class MLPSepDelaySepStep(nn.Module):
         self.delays_steps_num = delays_steps_num
 
         self.act = torch.nn.Tanh()
+        # self.act = torch.nn.SiLU()
 
         # Delay indices part
         self.delay_range = nn.ModuleList()
@@ -412,80 +414,6 @@ class MLPSepDelaySepStep(nn.Module):
             params = [(name, p.data.size()) for name, p in self.named_parameters()]
             print(f"Agent parameters {params}")
 
-# class MLPSepDelaySepStep(nn.Module):
-#     """
-#         Single-head policy with separate layers for delays indices and steps.
-#         Model based on fully connected layers.
-#         Input is always (channels, length) without batch dimension.
-#     """
-#     def __init__(self, state_dim, delays2change_num, delays_steps_num,
-#                  hidden_delay_ind_size=128, hidden_delay_ind_num=2,
-#                  hidden_delay_step_size=128, hidden_delay_step_num=2,
-#                  device='cuda'):
-#         super().__init__()
-#         self.device = device
-#         self.state_dim = state_dim
-#         self.delays2change_num = delays2change_num
-#         self.delays_steps_num = delays_steps_num
-
-#         # self.act = torch.nn.SiLU()
-#         self.act = torch.nn.Tanh()
-
-#         # Delay indices part
-#         self.delay_range = nn.ModuleList()
-#         for j_ind in range(delays2change_num):
-#             hidden = nn.ModuleList()
-#             for j in range(hidden_delay_ind_num):
-#                 in_ch = state_dim if j == 0 else hidden_delay_ind_size
-#                 out_ch = state_dim if j == hidden_delay_ind_num - 1 else hidden_delay_ind_size
-#                 hidden.append(nn.Linear(in_ch, out_ch, device=device))
-#             self.delay_range.append(hidden)
-        
-#         # Delay steps part
-#         self.delay_steps = nn.ModuleList()
-#         for j_step in range(delays2change_num):
-#             hidden = nn.ModuleList()
-#             for j in range(hidden_delay_step_num):
-#                 in_ch = state_dim if j == 0 else hidden_delay_step_size
-#                 out_ch = delays_steps_num if j == hidden_delay_step_num - 1 else hidden_delay_step_size
-#                 hidden.append(nn.Linear(in_ch, out_ch, device=device))
-#             self.delay_steps.append(hidden)
-
-#         self.policy_out = [self.delay_range, self.delay_steps]
-
-#     def forward(self, x):
-#         # x: (length, channels)
-
-#         policy = []
-#         for p_out in self.policy_out:
-#             for branch in p_out:
-#                 x_policy = x.clone()
-#                 for j_hidden, layer in enumerate(branch):
-#                     if j_hidden != len(branch) - 1:
-#                         x_policy = self.act(layer(x_policy)) # (length, out_dim)
-#                     else:
-#                         logits = layer(x_policy) # (length, out_dim)
-#                 policy.append(torch.distributions.Categorical(logits=logits))
-
-#         return policy
-
-#     def count_parameters(self, trainable=False):
-#         if trainable:
-#             param_num = sum(p.numel() for p in self.parameters() if p.requires_grad)
-#             print(f"Total agent trainable parameters number {param_num}")
-#         else:
-#             param_num = sum(p.numel() for p in self.parameters())
-#             print(f"Total agent parameters number {param_num}")
-#         return param_num
-
-#     def enumerate_parameters(self, trainable=False):
-#         if trainable:
-#             params = [(name, p.data.size()) for name, p in self.named_parameters() if p.requires_grad]
-#             print(f"Agent trainable parameters {params}")
-#         else:
-#             params = [(name, p.data.size()) for name, p in self.named_parameters()]
-#             print(f"Agent parameters {params}")
-
 class MLPSepDelayStep(nn.Module):
     """
         Single-head policy with separate layers for delays indices and steps 
@@ -556,6 +484,263 @@ class MLPSepDelayStep(nn.Module):
 
         return policy
 
+    def mask_logits(self, logits, mask, neg_inf=-1e9):
+        return logits.masked(~mask, neg_inf)
+
+    def count_parameters(self, trainable=False):
+        if trainable:
+            param_num = sum(p.numel() for p in self.parameters() if p.requires_grad)
+            print(f"Total agent trainable parameters number {param_num}")
+        else:
+            param_num = sum(p.numel() for p in self.parameters())
+            print(f"Total agent parameters number {param_num}")
+        return param_num
+
+    def enumerate_parameters(self, trainable=False):
+        if trainable:
+            params = [(name, p.data.size()) for name, p in self.named_parameters() if p.requires_grad]
+            print(f"Agent trainable parameters {params}")
+        else:
+            params = [(name, p.data.size()) for name, p in self.named_parameters()]
+            print(f"Agent parameters {params}")
+
+class MLPSepDelaySepStepStepID(nn.Module):
+    """
+        The same as MLPSepDelaySepStep bu with additional Step ID embedding, 
+        which helps model to understend index of time step.
+        Model based on fully connected layers with LayerNorm.
+        Input is always (channels, length) without batch dimension.
+    """
+    def __init__(self, state_dim, delays2change_num, delays_steps_num,
+                 trajectory_len, stepid_embed_size,
+                 hidden_delay_ind_size=128, hidden_delay_ind_num=2,
+                 hidden_delay_step_size=128, hidden_delay_step_num=2,
+                 device='cuda'):
+        super().__init__()
+        self.device = device
+        self.state_dim = state_dim
+        self.delays2change_num = delays2change_num
+        self.delays_steps_num = delays_steps_num
+
+        self.act = torch.nn.Tanh()
+        # self.act = torch.nn.SiLU()
+
+        self.stepid_embed = torch.nn.Embedding(trajectory_len, stepid_embed_size, device=device)
+
+        # Delay indices part
+        self.delay_range = nn.ModuleList()
+        self.delay_range_ln = nn.ModuleList()
+        for j_ind in range(delays2change_num):
+            hidden = nn.ModuleList()
+            norms = nn.ModuleList()
+            for j in range(hidden_delay_ind_num):
+                in_ch = state_dim + stepid_embed_size if j == 0 else hidden_delay_ind_size
+                out_ch = state_dim if j == hidden_delay_ind_num - 1 else hidden_delay_ind_size
+                hidden.append(nn.Linear(in_ch, out_ch, device=device))
+                if j != hidden_delay_ind_num - 1:
+                    norms.append(nn.LayerNorm(out_ch, elementwise_affine=True, device=device))
+            self.delay_range.append(hidden)
+            self.delay_range_ln.append(norms)
+
+        # Delay steps part
+        self.delay_steps = nn.ModuleList()
+        self.delay_steps_ln = nn.ModuleList()
+        for j_step in range(delays2change_num):
+            hidden = nn.ModuleList()
+            norms = nn.ModuleList()
+            for j in range(hidden_delay_step_num):
+                in_ch = state_dim + stepid_embed_size if j == 0 else hidden_delay_step_size
+                out_ch = delays_steps_num if j == hidden_delay_step_num - 1 else hidden_delay_step_size
+                hidden.append(nn.Linear(in_ch, out_ch, device=device))
+                if j != hidden_delay_step_num - 1:
+                    norms.append(nn.LayerNorm(out_ch, elementwise_affine=True, device=device))
+            self.delay_steps.append(hidden)
+            self.delay_steps_ln.append(norms)
+
+        self.policy_out = [self.delay_range, self.delay_steps]
+
+    def forward(self, x):
+        # t_step: (1, length)
+        t_step = torch.permute(x["time"], (1, 0)).to(torch.int32)
+        # x: (length, channels)
+        x = x["state"]
+        x = torch.cat((x, self.stepid_embed(t_step).squeeze(1)), dim=-1)
+        policy = []
+        # delay_range
+        for branch, norms in zip(self.delay_range, self.delay_range_ln):
+            x_policy = x.clone()
+            for j_hidden, layer in enumerate(branch):
+                if j_hidden != len(branch) - 1:
+                    x_policy = layer(x_policy)
+                    x_policy = norms[j_hidden](x_policy)
+                    x_policy = self.act(x_policy)
+                else:
+                    logits = layer(x_policy)
+            policy.append(torch.distributions.Categorical(logits=logits))
+
+        # delay_steps
+        for branch, norms in zip(self.delay_steps, self.delay_steps_ln):
+            x_policy = x.clone()
+            for j_hidden, layer in enumerate(branch):
+                if j_hidden != len(branch) - 1:
+                    x_policy = layer(x_policy)
+                    x_policy = norms[j_hidden](x_policy)
+                    x_policy = self.act(x_policy)
+                else:
+                    logits = layer(x_policy)
+            policy.append(torch.distributions.Categorical(logits=logits))
+
+        return policy
+
+    def count_parameters(self, trainable=False):
+        if trainable:
+            param_num = sum(p.numel() for p in self.parameters() if p.requires_grad)
+            print(f"Total agent trainable parameters number {param_num}")
+        else:
+            param_num = sum(p.numel() for p in self.parameters())
+            print(f"Total agent parameters number {param_num}")
+        return param_num
+
+    def enumerate_parameters(self, trainable=False):
+        if trainable:
+            params = [(name, p.data.size()) for name, p in self.named_parameters() if p.requires_grad]
+            print(f"Agent trainable parameters {params}")
+        else:
+            params = [(name, p.data.size()) for name, p in self.named_parameters()]
+            print(f"Agent parameters {params}")
+
+class MLPConditionalStep(nn.Module):
+    def __init__(self, state_dim, delays2change_num, delays_steps_num, trajectory_len,
+                 stepid_embed_size=12, ind_choice_embed_size=8,
+                 hidden_shared_size=128, hidden_shared_num=2,
+                 hidden_delay_ind_size=128, hidden_delay_ind_num=2,
+                 hidden_delay_step_size=128, hidden_delay_step_num=2,
+                 device='cuda'):
+        super().__init__()
+        self.device = device
+        self.state_dim = state_dim
+        self.J = delays2change_num
+        self.steps_num = delays_steps_num
+
+        self.act = nn.Tanh()
+        self.stepid_embed = nn.Embedding(trajectory_len, stepid_embed_size, device=device)
+
+        # Embedding of chosen delay index
+        self.ind_choice_embed = nn.Embedding(state_dim, ind_choice_embed_size, device=device)
+
+        # Shared trunk: in = state + step_id_emb -> hidden_shared_size
+        self.shared = nn.ModuleList()
+        self.shared_norms = nn.ModuleList()
+        in_ch = state_dim + stepid_embed_size
+        for l in range(hidden_shared_num):
+            out_ch = hidden_shared_size
+            self.shared.append(nn.Linear(in_ch, out_ch, device=device))
+            if l < hidden_shared_num - 1:
+                self.shared_norms.append(nn.LayerNorm(out_ch, elementwise_affine=True, device=device))
+            in_ch = out_ch
+
+        # Index part (each is fed by x_shared, i.e. in_ch = hidden_shared_size)
+        self.delay_range = nn.ModuleList()
+        self.delay_range_ln = nn.ModuleList()
+        for _ in range(self.J):
+            layers, norms = nn.ModuleList(), nn.ModuleList()
+            in_ch = hidden_shared_size
+            for l in range(hidden_delay_ind_num):
+                out_ch = self.state_dim if l == hidden_delay_ind_num - 1 else hidden_delay_ind_size
+                layers.append(nn.Linear(in_ch, out_ch, device=device))
+                if l < hidden_delay_ind_num - 1:
+                    norms.append(nn.LayerNorm(out_ch, elementwise_affine=True, device=device))
+                in_ch = out_ch
+            self.delay_range.append(layers)
+            self.delay_range_ln.append(norms)
+
+        # Step part (conditional w.r.t. chosen index; in_ch = hidden_shared_size + ind_emb)
+        self.delay_steps = nn.ModuleList()
+        self.delay_steps_ln = nn.ModuleList()
+        for _ in range(self.J):
+            layers, norms = nn.ModuleList(), nn.ModuleList()
+            in_ch = hidden_shared_size + ind_choice_embed_size
+            for l in range(hidden_delay_step_num):
+                out_ch = self.steps_num if l == hidden_delay_step_num - 1 else hidden_delay_step_size
+                layers.append(nn.Linear(in_ch, out_ch, device=device))
+                if l < hidden_delay_step_num - 1:
+                    norms.append(nn.LayerNorm(out_ch, elementwise_affine=True, device=device))
+                in_ch = out_ch
+            self.delay_steps.append(layers)
+            self.delay_steps_ln.append(norms)
+
+    def forward(self, x):
+        """
+        x["state"]: (L, state_dim)
+        x["time"]:  (L,) or (L,1) integer step_id
+        Returns:
+          actions:      (J, L, 2) long
+          log_probs:    (J, L, 2) float
+          dists:        list of length J, each includes [dist_idx, dist_step]
+        """
+        # ----- time embedding -----
+        t = x["time"]
+        if t.dim() == 2:  # (L,1) -> (L,)
+            t = t.squeeze(-1)
+        t = t.to(torch.long)                       # Embedding waits long
+        se = self.stepid_embed(t)                  # (L, E_step)
+        st = x["state"]                            # (L, D)
+        h = torch.cat([st, se], dim=-1)            # (L, D+E_step)
+
+        # ----- shared trunk -----
+        x_shared = h
+        for l, layer in enumerate(self.shared):
+            x_shared = layer(x_shared)
+            if l < len(self.shared) - 1:
+                x_shared = self.shared_norms[l](x_shared)
+                x_shared = self.act(x_shared)
+        # x_shared: (L, hidden_shared_size)
+
+        policy_ind, policy_step = [], []
+        chosen_idx, chosen_step = [], []
+        logp_idx, logp_step = [], []
+
+        # ----- Index part: sampling i_j -----
+        for j in range(self.J):
+            x_pol = x_shared.clone()
+            for l, layer in enumerate(self.delay_range[j]):
+                x_pol = layer(x_pol)
+                if l < len(self.delay_range[j]) - 1:
+                    x_pol = self.delay_range_ln[j][l](x_pol)
+                    x_pol = self.act(x_pol)
+            dist_i = Categorical(logits=x_pol)     # (L, state_dim)
+            i = dist_i.sample()                    # (L,) long
+            policy_ind.append(dist_i)
+            chosen_idx.append(i)
+            logp_idx.append(dist_i.log_prob(i))    # (L,)
+
+        # ----- Step part: conditional w.r.t. i_j -----
+        for j in range(self.J):
+            idx_emb = self.ind_choice_embed(chosen_idx[j])   # (L, E_ind)
+            x_pol = torch.cat([x_shared, idx_emb], dim=-1)   # (L, hidden+E_ind)
+            for l, layer in enumerate(self.delay_steps[j]):
+                x_pol = layer(x_pol)
+                if l < len(self.delay_steps[j]) - 1:
+                    x_pol = self.delay_steps_ln[j][l](x_pol)
+                    x_pol = self.act(x_pol)
+            dist_k = Categorical(logits=x_pol)     # (L, steps_num)
+            k = dist_k.sample()                    # (L,) long
+            policy_step.append(dist_k)
+            chosen_step.append(k)
+            logp_step.append(dist_k.log_prob(k))   # (L,)
+
+        # ----- Gather outputs into tensors -----
+        chosen_idx  = torch.stack(chosen_idx,  dim=0)        # (J, L)
+        chosen_step = torch.stack(chosen_step, dim=0)        # (J, L)
+        logp_idx    = torch.stack(logp_idx,    dim=0).float()# (J, L)
+        logp_step   = torch.stack(logp_step,   dim=0).float()# (J, L)
+
+        actions   = torch.stack([chosen_idx, chosen_step], dim=-1)   # (J, L, 2)
+        log_probs = torch.stack([logp_idx,   logp_step],   dim=-1)   # (J, L, 2)
+
+        dists = [[policy_ind[j], policy_step[j]] for j in range(self.J)]
+        return actions, log_probs, dists
+
     def count_parameters(self, trainable=False):
         if trainable:
             param_num = sum(p.numel() for p in self.parameters() if p.requires_grad)
@@ -623,12 +808,14 @@ class PolicyActor:
         pass
 
     def act(self, inputs, training=False):
-        inputs = torch.tensor(inputs)
-        if inputs.ndim < 2:
-            inputs = inputs.unsqueeze(0)
-        # else:
-        #     raise ValueError(f"Current RL implementation implies unbatched states. Current state includes {inputs.ndim} dimensions.")
-        inputs = inputs.to(self.agent.device).to(torch.float32)
+        for key, val in inputs.items():
+            val = torch.tensor(val)
+            if val.ndim < 2:
+                val = val.unsqueeze(0)
+            # else:
+            #     raise ValueError(f"Current RL implementation implies unbatched states. Current state includes {inputs.ndim} dimensions.")
+            val = val.to(self.agent.device).to(torch.float32)
+            inputs[key] = val
 
         policy = self.agent(inputs)
 
@@ -651,6 +838,80 @@ class PolicyActor:
         # print(f"In policy: {actions}")
         # sys.exit()
         log_probs = np.array(log_probs)[:, 0, :].tolist()
+
+        if not training:
+            return {'actions': actions, 
+                    'log_probs': log_probs}
+        else:
+            return {'distribution': distr}
+
+    def act(self, inputs, training=False):
+        for key, val in inputs.items():
+            val = torch.tensor(val)
+            if val.ndim < 2:
+                val = val.unsqueeze(0)
+            # else:
+            #     raise ValueError(f"Current RL implementation implies unbatched states. Current state includes {inputs.ndim} dimensions.")
+            val = val.to(self.agent.device).to(torch.float32)
+            inputs[key] = val
+
+        policy = self.agent(inputs)
+
+        indices = policy[:int(len(policy) // 2)]
+        steps = policy[int(len(policy) // 2):]
+
+        actions, distr, log_probs = [], [], []
+        for j in range(int(len(policy) // 2)):
+            distr.append([indices[j], steps[j]])
+            indices_ind_j, steps_ind_j = indices[j].sample(), steps[j].sample()
+            # steps_j = steps_ind_j - delta_step
+            action = torch.cat([indices_ind_j[:, None], steps_ind_j[:, None]], dim=-1)
+            log_prob_ind = distr[-1][0].log_prob(indices_ind_j)
+            log_prob_step = distr[-1][1].log_prob(steps_ind_j)
+            log_prob = torch.cat([log_prob_ind[:, None], log_prob_step[:, None]], dim=-1)
+            actions.append(action.detach().cpu().numpy().tolist())
+            log_probs.append(log_prob.detach().cpu().numpy().tolist())
+
+        # print(np.array(actions).shape)
+        # print(np.array(log_probs).shape)
+        # sys.exit()
+
+        actions = np.array(actions)[:, 0, :].tolist()
+        log_probs = np.array(log_probs)[:, 0, :].tolist()
+
+        if not training:
+            return {'actions': actions, 
+                    'log_probs': log_probs}
+        else:
+            return {'distribution': distr}
+
+class Policy_v1_3:
+    def __init__(self, agent):
+        self.agent = agent
+    
+    def reset(self):
+        pass
+
+    def act(self, inputs, training=False):
+        for key, val in inputs.items():
+            val = torch.tensor(val)
+            if val.ndim < 2:
+                val = val.unsqueeze(0)
+            # else:
+            #     raise ValueError(f"Current RL implementation implies unbatched states. Current state includes {inputs.ndim} dimensions.")
+            val = val.to(self.agent.device).to(torch.float32)
+            inputs[key] = val
+
+        actions, log_probs, distr = self.agent(inputs)
+
+        print(actions.detach().cpu().numpy().tolist())
+        print(log_probs.detach().cpu().numpy().tolist())
+        # print(actions.detach().cpu().numpy().shape)
+        # print(log_probs.detach().cpu().numpy().shape)
+        # sys.exit()
+
+        actions = actions.detach().cpu().numpy().tolist()
+        log_probs = log_probs.detach().cpu().numpy().tolist()
 
         if not training:
             return {'actions': actions, 

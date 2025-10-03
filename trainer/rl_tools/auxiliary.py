@@ -59,6 +59,7 @@ class AccumReturn:
         for t in range(len(rewards)-1, -1, -1):
             R = rewards[t] + gamma * R * (1.0 - dones[t])
             returns[t] = R
+            # returns[t] = sum(rewards)
 
         trajectory["returns"] = returns.astype(np.float32)
         return trajectory
@@ -77,9 +78,7 @@ class NormalizeReturns:
         returns = np.asarray(trajectory["returns"]).flatten()
         var = np.var(returns)
         mean = np.mean(returns)
-        # print((returns - mean) / np.sqrt(var + eps))
-        # trajectory["returns"] = (returns - mean) / np.sqrt(var + eps)
-        trajectory["returns"] = returns * 100
+        trajectory["returns"] = (returns - mean) / np.sqrt(var + eps)
 
 class AsArray:
     """ 
@@ -103,7 +102,9 @@ class TrainingTracker:
         self.alg_type = alg_type
         self.save_path = save_path
         # Parameters to be tracked
-        self.rewards = []
+        self.rewards_mean = []
+        self.rewards_max = []
+        self.rewards_min = []
         self.r2_score = [] # Coefficient of determination
         self.policy_entropy = []
         self.value_loss = []
@@ -129,7 +130,9 @@ class TrainingTracker:
     
     def accum_stat(self, minibatch):
 
-        self.accum_rewards(minibatch)
+        self.accum_rewards_mean(minibatch)
+        self.accum_rewards_max(minibatch)
+        self.accum_rewards_min(minibatch)
         self.accum_entropy(minibatch)
         self.accum_policy_loss(minibatch)
         self.accum_grad_norm()
@@ -146,11 +149,23 @@ class TrainingTracker:
         elif self.alg_type == 'pg':
             self.accum_returns(minibatch)       
 
-    def accum_rewards(self, minibatch):
+    def accum_rewards_mean(self, minibatch):
         rewards = np.mean(minibatch["rewards"].flatten())
-        self.rewards.append(rewards)
+        self.rewards_mean.append(rewards)
         if self.save_path is not None:
-            np.save(os.path.join(self.save_path, f"rewards.npy"), np.asarray(self.rewards))
+            np.save(os.path.join(self.save_path, f"rewards_mean.npy"), np.asarray(self.rewards_mean))
+    
+    def accum_rewards_max(self, minibatch):
+        rewards = np.max(minibatch["rewards"].flatten())
+        self.rewards_max.append(rewards)
+        if self.save_path is not None:
+            np.save(os.path.join(self.save_path, f"rewards_max.npy"), np.asarray(self.rewards_max))
+
+    def accum_rewards_min(self, minibatch):
+        rewards = np.min(minibatch["rewards"].flatten())
+        self.rewards_min.append(rewards)
+        if self.save_path is not None:
+            np.save(os.path.join(self.save_path, f"rewards_min.npy"), np.asarray(self.rewards_min))
 
     def accum_r2(self, minibatch):
         """ R2 used to evaluate critic value prediction quality """
@@ -167,7 +182,9 @@ class TrainingTracker:
 
     def accum_entropy(self, minibatch):
         with torch.no_grad():
-            act = self.alg.policy.act(minibatch["observations"], training=True)
+            inputs = {"state": minibatch["observations"],
+                      "time": minibatch["time_steps"]}
+            act = self.alg.policy.act(inputs, training=True)
             entropy = self.alg.explore_loss(minibatch, act).item()
             self.policy_entropy.append(entropy)
         if self.save_path is not None:
@@ -175,7 +192,9 @@ class TrainingTracker:
 
     def accum_value_loss(self, minibatch):
         with torch.no_grad():
-            act = self.alg.policy.act(minibatch["observations"], training=True)
+            inputs = {"state": minibatch["observations"],
+                      "time": minibatch["time_steps"]}
+            act = self.alg.policy.act(inputs, training=True)
             value_loss = self.alg.value_loss(minibatch, act).item()
             self.value_loss.append(value_loss)
         if self.save_path is not None:
@@ -183,7 +202,9 @@ class TrainingTracker:
 
     def accum_policy_loss(self, minibatch):
         with torch.no_grad():
-            act = self.alg.policy.act(minibatch["observations"], training=True)
+            inputs = {"state": minibatch["observations"],
+                      "time": minibatch["time_steps"]}
+            act = self.alg.policy.act(inputs, training=True)
             policy_loss = self.alg.policy_loss(minibatch, act).item()
             self.policy_loss.append(policy_loss)
         if self.save_path is not None:
@@ -197,7 +218,9 @@ class TrainingTracker:
 
     def accum_value_predicts(self, minibatch):
         with torch.no_grad():
-            act = self.alg.policy.act(minibatch["observations"], training=True)
+            inputs = {"state": minibatch["observations"],
+                      "time": minibatch["time_steps"]}
+            act = self.alg.policy.act(inputs, training=True)
             value_predicts = np.mean(act["values"].detach().cpu().numpy().flatten())
             self.value_predicts.append(value_predicts)
         if self.save_path is not None:
@@ -257,7 +280,9 @@ class TrainingTracker:
 
     def approx_kl(self, trajectory):
         with torch.no_grad():
-            act = self.alg.policy.act(trajectory["observations"], training=True)
+            inputs = {"state": trajectory["observations"],
+                      "time": trajectory["time_steps"]}
+            act = self.alg.policy.act(inputs, training=True)
             actions = torch.tensor(trajectory["actions"], device=self.alg.policy.agent.device)
             log_probs = torch.tensor(trajectory["log_probs"], device=self.alg.policy.agent.device)
             policy = act['distribution']
@@ -278,7 +303,9 @@ class TrainingTracker:
     def clip_fraction(self, trajectory):
         eps = self.alg.cliprange_policy
         with torch.no_grad():
-            act = self.alg.policy.act(trajectory["observations"], training=True)
+            inputs = {"state": trajectory["observations"],
+                      "time": trajectory["time_steps"]}
+            act = self.alg.policy.act(inputs, training=True)
             actions = torch.tensor(trajectory["actions"], device=self.alg.policy.agent.device)
             log_probs = torch.tensor(trajectory["log_probs"], device=self.alg.policy.agent.device)
             policy = act['distribution']
