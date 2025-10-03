@@ -904,14 +904,14 @@ class Policy_v1_3:
 
         actions, log_probs, distr = self.agent(inputs)
 
-        print(actions.detach().cpu().numpy().tolist())
-        print(log_probs.detach().cpu().numpy().tolist())
+        # print(actions.detach().cpu().numpy().tolist())
+        # print(log_probs.detach().cpu().numpy().tolist())
         # print(actions.detach().cpu().numpy().shape)
         # print(log_probs.detach().cpu().numpy().shape)
         # sys.exit()
 
-        actions = actions.detach().cpu().numpy().tolist()
-        log_probs = log_probs.detach().cpu().numpy().tolist()
+        actions = actions[:, 0, :].detach().cpu().numpy().tolist()
+        log_probs = log_probs[:, 0, :].detach().cpu().numpy().tolist()
 
         if not training:
             return {'actions': actions, 

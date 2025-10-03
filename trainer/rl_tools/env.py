@@ -153,8 +153,6 @@ class PerformanceEnv(gym.Env):
                     truncated is True, is maximum number of steps is achieved,
                     terminated is always False, since agent can walk in the environment without limits.
         """
-        print(action)
-        sys.exit()
         assert self.action_space.contains(action), f"Chosen action is out of action space."
 
         terminated = False

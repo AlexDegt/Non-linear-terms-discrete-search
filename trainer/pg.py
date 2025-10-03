@@ -125,23 +125,23 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
     ind_choice_embed_size = config["ind_choice_embed_size"]
     hidden_shared_size = config["hidden_shared_size"]
     hidden_shared_num = config["hidden_shared_num"]
-    # agent = MLPConditionalStep(state_dim, delays2change_num, delays_steps_num,
-    #                         num_runner_steps, stepid_embed_size, ind_choice_embed_size,
-    #                         hidden_shared_size, hidden_shared_num,
-    #                         hidden_delay_ind_size, hidden_delay_ind_num,
-    #                         hidden_delay_step_size, hidden_delay_step_num,
-    #                         model.device)
-    agent = MLPSepDelaySepStepStepID(state_dim, delays2change_num, delays_steps_num,
-                            num_runner_steps, stepid_embed_size,
+    agent = MLPConditionalStep(state_dim, delays2change_num, delays_steps_num,
+                            num_runner_steps, stepid_embed_size, ind_choice_embed_size,
+                            hidden_shared_size, hidden_shared_num,
                             hidden_delay_ind_size, hidden_delay_ind_num,
                             hidden_delay_step_size, hidden_delay_step_num,
                             model.device)
+    # agent = MLPSepDelaySepStepStepID(state_dim, delays2change_num, delays_steps_num,
+    #                         num_runner_steps, stepid_embed_size,
+    #                         hidden_delay_ind_size, hidden_delay_ind_num,
+    #                         hidden_delay_step_size, hidden_delay_step_num,
+    #                         model.device)
     agent.count_parameters()
     # agent.enumerate_parameters()
 
     # Policy: different returns for trajectory sampling and agent training
-    policy = PolicyActor(agent)
-    # policy = Policy_v1_3(agent)
+    # policy = PolicyActor(agent)
+    policy = Policy_v1_3(agent)
 
     def make_ppo_runner(env, policy, num_runner_steps=2048, gamma=0.99, 
                         num_epochs=10, num_minibatches=32):
