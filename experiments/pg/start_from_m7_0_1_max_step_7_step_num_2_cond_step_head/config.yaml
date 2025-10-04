@@ -63,7 +63,7 @@ hidden_delay_step_num: 2
 stepid_embed_size: 12
 ind_choice_embed_size: 8
 hidden_shared_size: 128
-hidden_shared_num: 2
+hidden_shared_num: 3
 # General training parameters
 num_runner_steps: 2 # Steps in trajectory
 gamma: 0.8 # discount

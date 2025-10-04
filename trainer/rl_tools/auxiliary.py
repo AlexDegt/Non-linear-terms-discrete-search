@@ -41,11 +41,19 @@ class GAE:
 
 class AccumReturn:
     """ 
-        Calculate accumulative return taking into account discount gamma.
+        Calculate accumulative return.
+        If mode == 'terminal', - function copies last rewards to call returns,
+            which means that only the last reward is important.
+        If mode == 'discount', - __call__ calucalates discount return with
+            discount parameter gamma.
+        If mode == 'max', - __call__ copies maximum reward during trajectory to all steps.
     """
-    def __init__(self, policy, gamma=0.99):
+    def __init__(self, policy, gamma=0.99, mode='terminal'):
         self.policy = policy
         self.gamma = gamma
+        assert mode == 'terminal' or mode == 'discount' or mode == 'max', \
+            f"Return accumulation mode must be either \'discount\', \'terminal\' or \'max\', but {mode} is given."
+        self.mode = mode
         
     def __call__(self, trajectory):
         gamma = self.gamma
@@ -57,9 +65,13 @@ class AccumReturn:
 
         R = 0.0
         for t in range(len(rewards)-1, -1, -1):
-            R = rewards[t] + gamma * R * (1.0 - dones[t])
-            returns[t] = R
-            # returns[t] = sum(rewards)
+            if self.mode == 'discount':
+                R = rewards[t] + gamma * R * (1.0 - dones[t])
+                returns[t] = R
+            elif self.mode == 'terminal':
+                returns[t] = rewards[-1]
+            elif self.mode == 'max':
+                returns[t] = np.max(rewards)
 
         trajectory["returns"] = returns.astype(np.float32)
         return trajectory
@@ -74,11 +86,21 @@ class NormalizeAdvantages:
 
 class NormalizeReturns:
     """ Normalizes cumulative returns to have zero mean and variance 1. """
-    def __call__(self, trajectory, eps=1e-8):
+    def __init__(self, beta=0.0):
+        self.beta = beta
+        self.baseline = 0
+    def __call__(self, trajectory, traj_per_batch, eps=1e-8):
         returns = np.asarray(trajectory["returns"]).flatten()
+        # traj_len = len(returns) // traj_per_batch
+        # delta = np.mean(returns[traj_len-1::traj_len])
+        # self.baseline = self.beta * self.baseline + (1 - self.beta) * delta
         var = np.var(returns)
         mean = np.mean(returns)
+        # print(np.mean(returns))
         trajectory["returns"] = (returns - mean) / np.sqrt(var + eps)
+        # trajectory["returns"] = returns - self.baseline
+        # trajectory["returns"] = returns / 0.004
+        # trajectory["returns"] = returns /np.sqrt(var + eps)
 
 class AsArray:
     """ 
@@ -96,13 +118,16 @@ class TrainingTracker:
         Object includes methods and attributes for agent training parameters tracking.
         Accumulates algorithm parameters during training.
     """
-    def __init__(self, env, alg, save_path=None, alg_type='ppo'):
+    def __init__(self, env, alg, traj_per_batch, save_path=None, alg_type='ppo'):
         self.env = env
         self.alg = alg
         self.alg_type = alg_type
         self.save_path = save_path
+        self.traj_per_batch = traj_per_batch
         # Parameters to be tracked
         self.rewards_mean = []
+        self.rewards_last_mean = []
+        self.rewards_max_mean = []
         self.rewards_max = []
         self.rewards_min = []
         self.r2_score = [] # Coefficient of determination
@@ -130,9 +155,9 @@ class TrainingTracker:
     
     def accum_stat(self, minibatch):
 
+        self.accum_rewards_last_mean(minibatch)
         self.accum_rewards_mean(minibatch)
-        self.accum_rewards_max(minibatch)
-        self.accum_rewards_min(minibatch)
+        self.accum_rewards_max_mean(minibatch)
         self.accum_entropy(minibatch)
         self.accum_policy_loss(minibatch)
         self.accum_grad_norm()
@@ -149,20 +174,46 @@ class TrainingTracker:
         elif self.alg_type == 'pg':
             self.accum_returns(minibatch)       
 
+    def accum_rewards_last_mean(self, minibatch):
+        """ Calculates mean of the last reward in trajectory """
+        traj_len = len(minibatch["rewards"].flatten()) // self.traj_per_batch
+        rewards = np.mean(minibatch["rewards"].flatten()[traj_len - 1::traj_len])
+        self.rewards_last_mean.append(rewards)
+        if self.save_path is not None:
+            np.save(os.path.join(self.save_path, f"rewards_last_mean.npy"), np.asarray(self.rewards_last_mean))
+
     def accum_rewards_mean(self, minibatch):
+        """ Calculates mean of reward in whole minibatch """
         rewards = np.mean(minibatch["rewards"].flatten())
         self.rewards_mean.append(rewards)
         if self.save_path is not None:
             np.save(os.path.join(self.save_path, f"rewards_mean.npy"), np.asarray(self.rewards_mean))
+
+    def accum_rewards_max_mean(self, minibatch):
+        """ Calculates mean of the max reward in trajectory """
+        rewards = minibatch["rewards"].flatten()
+        rewards_max_per_traj = np.max(rewards.reshape(self.traj_per_batch, -1), axis=1)
+        rewards = np.mean(rewards_max_per_traj)
+        # print(rewards)
+        # print(rewards.reshape(self.traj_per_batch, -1))
+        # print(np.max(rewards.reshape(self.traj_per_batch, -1), axis=1))
+        # sys.exit()
+        self.rewards_max_mean.append(rewards)
+        if self.save_path is not None:
+            np.save(os.path.join(self.save_path, f"rewards_max_mean.npy"), np.asarray(self.rewards_max_mean))
     
     def accum_rewards_max(self, minibatch):
-        rewards = np.max(minibatch["rewards"].flatten())
+        """ Calculates max of the last reward in trajectory """
+        traj_len = len(minibatch["rewards"].flatten()) // self.traj_per_batch
+        rewards = np.max(minibatch["rewards"].flatten()[traj_len - 1::traj_len])
         self.rewards_max.append(rewards)
         if self.save_path is not None:
             np.save(os.path.join(self.save_path, f"rewards_max.npy"), np.asarray(self.rewards_max))
 
     def accum_rewards_min(self, minibatch):
-        rewards = np.min(minibatch["rewards"].flatten())
+        """ Calculates min of the last reward in trajectory """
+        traj_len = len(minibatch["rewards"].flatten()) // self.traj_per_batch
+        rewards = np.min(minibatch["rewards"].flatten()[traj_len - 1::traj_len])
         self.rewards_min.append(rewards)
         if self.save_path is not None:
             np.save(os.path.join(self.save_path, f"rewards_min.npy"), np.asarray(self.rewards_min))

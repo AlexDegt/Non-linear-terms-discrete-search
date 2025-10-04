@@ -139,7 +139,9 @@ class PerformanceEnv(gym.Env):
         elif self.start_mode == 'continue':
             pass
         elif self.start_mode == 'same':
-            self.state = copy(self.init_delays)
+            # print('hey')
+            self.state = deepcopy(self.init_delays)
+            # print(f"Just after reset: {self.state}")
         return self.state, {}
 
     def step(self, action):
@@ -168,18 +170,19 @@ class PerformanceEnv(gym.Env):
             steps = steps[steps != 0]
             delay_step = steps[delay_step_ind]
             # print(self.state)
-            # Clip state if its out of range after step. Clip is not good for training
-            # self.state = np.clip(self.state, self.state_space.low, self.state_space.high)
             # Bounce from the bound
-            L = self.state_space.low[0]
-            U = self.state_space.high[0]
-            while self.state[delay_ind] + delay_step < L or self.state[delay_ind] + delay_step > U:
-                if self.state[delay_ind] + delay_step < L:
-                    delay_step = 2 * L - (2 * self.state[delay_ind] + delay_step)
-                elif self.state[delay_ind] + delay_step > U:
-                    delay_step = 2 * U - (2 * self.state[delay_ind] + delay_step)
+            # L = self.state_space.low[0]
+            # U = self.state_space.high[0]
+            # while self.state[delay_ind] + delay_step < L or self.state[delay_ind] + delay_step > U:
+            #     if self.state[delay_ind] + delay_step < L:
+            #         delay_step = 2 * L - (2 * self.state[delay_ind] + delay_step)
+            #     elif self.state[delay_ind] + delay_step > U:
+            #         delay_step = 2 * U - (2 * self.state[delay_ind] + delay_step)
             self.state[delay_ind] += delay_step
+            # Clip state if its out of range after step. Clip is not good for training
+            self.state = np.clip(self.state, self.state_space.low, self.state_space.high).tolist()
             # print(self.state, action)
+            # sys.exit()
         assert self.state_space.contains(np.asarray(self.state)), f"Chosen state is out of state space."
         # Search reward inside the oracle buffer.
         # If ther if no such state in buffer, call oracle
@@ -330,6 +333,7 @@ class EnvRunner:
     def reset(self, **kwargs):
         """ Resets env and runner states. """
         self.state["latest_observation"], info = self.env.reset(**kwargs)
+        tmp = self.state["latest_observation"]
         self.policy.reset()
 
     def get_next(self):
@@ -343,6 +347,7 @@ class EnvRunner:
 
         for i in range(self.nsteps):
             observations.append(deepcopy(self.state["latest_observation"]))
+            # print(f"Obs before action {np.asarray(observations[-1], dtype=int)}")
             time_steps.append(i)
             norm_param = max(max(abs(self.env.state_space.high)), max(abs(self.env.state_space.low)))
             inputs = {"state": observations[-1] / norm_param,
@@ -356,26 +361,22 @@ class EnvRunner:
 
             obs, rew, terminated, truncated, _ = self.env.step(trajectory['actions'][-1])
             # print(trajectory['actions'][-1])
+
+            # print(f"Action: {act['actions']}, reward={rew}")
             # print(obs)
+            # print(f"Obs after action {np.asarray(obs, dtype=int)}")
             # print(rew)
             done = np.logical_or(terminated, truncated)
-            self.state["latest_observation"] = obs
+            self.state["latest_observation"] = deepcopy(obs)
             rewards.append(rew)
             resets.append(done)
-            self.step_var += self.nenvs or 1
-
-            # Only reset if the env is not batched. Batched envs should
-            # auto-reset.
-            if not self.nenvs and np.all(done):
-                self.state["env_steps"] = i + 1
-                self.state["latest_observation"] = self.env.reset()[0]
 
         trajectory.update(
             observations=observations,
             rewards=rewards,
             resets=resets,
             time_steps=time_steps)
-        trajectory["state"] = self.state
+        trajectory["state"] = deepcopy(self.state)
 
         # print(trajectory["observations"])
         # print(trajectory["actions"])
@@ -421,7 +422,7 @@ class TrajectorySampler:
             # np.save(f"observations_{self.trajectory_count}.npy", np.asarray(self.trajectory["observations"]))
 
         if self.minibatch_count == self.num_minibatches:
-            self.shuffle_trajectory()
+            # self.shuffle_trajectory()
             self.minibatch_count = 0
             self.epoch_count += 1
 
@@ -434,7 +435,7 @@ class TrajectorySampler:
             self.whole_trajectory = deepcopy(self.trajectory)
             # np.save(f"observations_{self.trajectory_count}.npy", np.asarray(self.trajectory["observations"]))
 
-            self.shuffle_trajectory()
+            # self.shuffle_trajectory()
             self.minibatch_count = 0
             self.epoch_count = 0
 

@@ -623,6 +623,7 @@ class MLPConditionalStep(nn.Module):
         self.steps_num = delays_steps_num
 
         self.act = nn.Tanh()
+        # self.act = nn.SiLU()
         self.stepid_embed = nn.Embedding(trajectory_len, stepid_embed_size, device=device)
 
         # Embedding of chosen delay index
@@ -683,7 +684,9 @@ class MLPConditionalStep(nn.Module):
         if t.dim() == 2:  # (L,1) -> (L,)
             t = t.squeeze(-1)
         t = t.to(torch.long)                       # Embedding waits long
-        se = self.stepid_embed(t)                  # (L, E_step)
+        se = self.stepid_embed(t)
+        if se.dim() == 3:                      # (1, L, E_step) -> (L, E_step)
+            se = se.squeeze(0)                  # (L, E_step)
         st = x["state"]                            # (L, D)
         h = torch.cat([st, se], dim=-1)            # (L, D+E_step)
 

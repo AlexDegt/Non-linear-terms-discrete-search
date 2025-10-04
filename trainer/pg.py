@@ -109,6 +109,7 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
     # General training parameters
     num_runner_steps = config["num_runner_steps"]
     gamma = config["gamma"]
+    accum_return_mode = config["accum_return_mode"]
     num_epochs_per_traj = 1
     num_minibatches = config["num_minibatches"]
 
@@ -146,7 +147,7 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
     def make_ppo_runner(env, policy, num_runner_steps=2048, gamma=0.99, 
                         num_epochs=10, num_minibatches=32):
         """ Creates runner for PPO algorithm. """
-        runner_transforms = [AsArray(), AccumReturn(policy, gamma=gamma)]
+        runner_transforms = [AsArray(), AccumReturn(policy, gamma=gamma, mode=accum_return_mode)]
         runner = EnvRunner(env, policy, num_runner_steps, transforms=runner_transforms)
 
         # sampler_transforms = [NormalizeReturns()]
@@ -176,21 +177,25 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
 
     # Define statistics tracker
     alg_type = 'pg'
-    tracker = TrainingTracker(env, pg, save_path, alg_type)
+    traj_per_batch = config["traj_per_batch"]
+    tracker = TrainingTracker(env, pg, traj_per_batch, save_path, alg_type)
     
     for epoch in range(epochs):
         t_epoch_start = time.time()
 
-        for j_traj in range(3):
+        reward_last = []
+        for j_traj in range(traj_per_batch):
             trajectory, whole_trajectory = runner.get_next(return_whole=True)
+            # print(trajectory['observations'])
             if j_traj == 0:
                 trajectory_batch = deepcopy(trajectory)
-            for key, val in trajectory_batch.items():
-                if key != 'state' and key != 'latest_observation' and key != 'env_steps':
-                    trajectory_batch[key] = np.concatenate((trajectory_batch[key], trajectory[key]), axis=0)
+            else:
+                for key, val in trajectory_batch.items():
+                    if key != 'state' and key != 'latest_observation' and key != 'env_steps':
+                        trajectory_batch[key] = np.concatenate((trajectory_batch[key], trajectory[key]), axis=0)
 
         norm = NormalizeReturns()
-        norm(trajectory_batch)
+        norm(trajectory_batch, traj_per_batch)
 
         tracker.save_oracle_buffer()
 
@@ -199,7 +204,7 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
         tracker.accum_stat(trajectory_batch)
 
         t_epoch_end = time.time()
-        print(f"Epoch {epoch}, reward mean = {tracker.rewards_mean[-1]:.5f}, time per epoch {(t_epoch_end - t_epoch_start):.3f} s")
+        print(f"Epoch {epoch}, reward max mean = {tracker.rewards_max_mean[-1]:.5f}, time per epoch {(t_epoch_end - t_epoch_start):.3f} s")
 
     general_timer.__exit__()
     print(f"Total time elapsed: {general_timer.interval} s")
