@@ -178,12 +178,13 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
     # Define statistics tracker
     alg_type = 'pg'
     traj_per_batch = config["traj_per_batch"]
-    tracker = TrainingTracker(env, pg, traj_per_batch, save_path, alg_type)
+    log_epochs = config["log_epochs"]
+    log_trajs = config["log_trajs"]
+    tracker = TrainingTracker(env, pg, traj_per_batch, log_epochs, log_trajs, save_path, alg_type)
     
     for epoch in range(epochs):
         t_epoch_start = time.time()
 
-        reward_last = []
         for j_traj in range(traj_per_batch):
             trajectory, whole_trajectory = runner.get_next(return_whole=True)
             # print(trajectory['observations'])
@@ -194,14 +195,27 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
                     if key != 'state' and key != 'latest_observation' and key != 'env_steps':
                         trajectory_batch[key] = np.concatenate((trajectory_batch[key], trajectory[key]), axis=0)
 
+        # Zero returns after maximum
+        # rewards = trajectory_batch['rewards'].reshape(traj_per_batch, -1)
+        # returns = trajectory_batch['returns'].reshape(traj_per_batch, -1)
+        # cols = np.arange(returns.shape[1])  # [0, 1, 2, 3]
+        # mask = cols[None, :] > np.argmax(rewards, axis=1)[:, None]
+        # returns[mask] = 0
+        mask = None
+
         norm = NormalizeReturns()
-        norm(trajectory_batch, traj_per_batch)
+        norm(trajectory_batch, traj_per_batch, mask)
+
+        # print(trajectory_batch['returns'])
+        # sys.exit()
 
         tracker.save_oracle_buffer()
 
         pg.step(trajectory_batch)
         sched.step()
         tracker.accum_stat(trajectory_batch)
+
+        tracker.log_steps(trajectory_batch, epoch)
 
         t_epoch_end = time.time()
         print(f"Epoch {epoch}, reward max mean = {tracker.rewards_max_mean[-1]:.5f}, time per epoch {(t_epoch_end - t_epoch_start):.3f} s")

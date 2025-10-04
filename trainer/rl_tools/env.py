@@ -78,10 +78,10 @@ class PerformanceEnv(gym.Env):
         assert delays_range[0] < delays_range[1]
 
         # Save environment parameters
-        self.__delays_number = delays_number
+        self.delays_number = delays_number
         self.__delays_range = delays_range
         self.__max_delay_step = max_delay_step
-        self.__delays2change_num = delays2change_num
+        self.delays2change_num = delays2change_num
         self.__train_tomb_raider = train_tomb_raider
         self.tomb_raider = tomb_raider
         # Number of delays in each branch. For 2D model it equals 3
@@ -133,7 +133,7 @@ class PerformanceEnv(gym.Env):
         super().reset(seed=seed)
         self.step_curr = 1
         if self.start_mode == 'zeros':
-            self.state = np.zeros((self.__delays_number,), dtype=int).tolist()
+            self.state = np.zeros((self.delays_number,), dtype=int).tolist()
         elif self.start_mode == 'random':
             self.state = self.state_space.sample()
         elif self.start_mode == 'continue':
@@ -166,9 +166,10 @@ class PerformanceEnv(gym.Env):
 
         for action_pair in action:
             delay_ind, delay_step_ind = action_pair
-            steps = np.arange(-self.__max_delay_step, self.__max_delay_step + 1, 1)
-            steps = steps[steps != 0]
-            delay_step = steps[delay_step_ind]
+            # steps = np.arange(-self.__max_delay_step, self.__max_delay_step + 1, 1)
+            # steps = steps[steps != 0]
+            # delay_step = steps[delay_step_ind]
+            delay_step = self.step_ind_to_step(delay_step_ind)
             # print(self.state)
             # Bounce from the bound
             # L = self.state_space.low[0]
@@ -209,6 +210,11 @@ class PerformanceEnv(gym.Env):
         # print(self.state)
 
         return self.state, reward, terminated, truncated, {}
+
+    def step_ind_to_step(self, delay_step_ind):
+        steps = np.arange(-self.__max_delay_step, self.__max_delay_step + 1, 1)
+        steps = steps[steps != 0]
+        return steps[delay_step_ind]
 
     def render(self):
         print("State:", self.state)

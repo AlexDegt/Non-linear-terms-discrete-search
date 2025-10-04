@@ -66,6 +66,10 @@ total_epoch_num: 300 # Total number of epochs
 lr: 0.0003 # Adam learning rate
 eps: 0.00000001 # Adam epsilon
 
+# Log parameters
+log_epochs: [0, 30, 100, 200, 290] # Indices, can be any number of values
+log_trajs: [0, 20] # Range, must be 2 values
+
 # Policy Gradient training parameters
 explore_loss_coef: 0.0 # weight of explore loss
 max_grad_norm: 1000 # Maximum grad norm for clipping
