@@ -4,6 +4,7 @@ trial_descript: Training of 1D Chebyshev polynomial-based model
 # otherwise it is set name set by user 
 # trial_name: start_from_m7_7_1_max_step_7_step_num_3_cond_step_head_return_mode_max_zero_step
 # trial_name: start_from_m7_7_1_max_step_7_step_num_3_cond_step_head_return_mode_max
+# trial_name: start_from_m7_0_1_max_step_7_step_num_3_cond_step_head_return_mode_max
 trial_name: test
 
 # trial_name: sgd_full_grad_adam_10k_epochs_4_pow_dim_mu_1e_3_stand_tx
@@ -42,7 +43,7 @@ state_alpha: 0.0
 reward_alpha: 0.0
 # Initial delays
 start_mode: same
-init_delays: [[-7, 7, 1]]
+init_delays: [[-7, 0, 1]]
 
 # Parameters of MLP agent
 hidden_delay_ind_size: 256
@@ -50,7 +51,7 @@ hidden_delay_ind_num: 2
 hidden_delay_step_size: 256
 hidden_delay_step_num: 2
 stepid_embed_size: 6
-ind_choice_embed_size: 14
+ind_choice_embed_size: 24
 hidden_shared_size: 256
 hidden_shared_num: 2
 # General training parameters
