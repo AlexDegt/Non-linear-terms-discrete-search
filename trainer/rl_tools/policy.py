@@ -522,8 +522,8 @@ class MLPSepDelaySepStepStepID(nn.Module):
         self.delays2change_num = delays2change_num
         self.delays_steps_num = delays_steps_num
 
-        self.act = torch.nn.Tanh()
-        # self.act = torch.nn.SiLU()
+        # self.act = torch.nn.Tanh()
+        self.act = torch.nn.SiLU()
 
         self.stepid_embed = torch.nn.Embedding(trajectory_len, stepid_embed_size, device=device)
 
@@ -905,13 +905,11 @@ class Policy_v1_3:
             val = val.to(self.agent.device).to(torch.float32)
             inputs[key] = val
 
-        actions, log_probs, distr = self.agent(inputs)
-
-        # print(actions.detach().cpu().numpy().tolist())
-        # print(log_probs.detach().cpu().numpy().tolist())
-        # print(actions.detach().cpu().numpy().shape)
-        # print(log_probs.detach().cpu().numpy().shape)
+        # print(inputs['state'].size())
+        # print(inputs['time'].size())
         # sys.exit()
+
+        actions, log_probs, distr = self.agent(inputs)
 
         actions = actions[:, 0, :].detach().cpu().numpy().tolist()
         log_probs = log_probs[:, 0, :].detach().cpu().numpy().tolist()

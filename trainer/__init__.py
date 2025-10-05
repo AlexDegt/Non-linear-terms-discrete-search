@@ -4,5 +4,5 @@ from .ppo import train_ppo
 from .pg import train_pg
 from .rl_tools import PerformanceEnv, NormalizeWrapper, TrajectoryNormalizeWrapper, \
     CNNSharedBackPolicy, MLPSharedBackPolicy, MLPSepDelaySepStep, Policy, PolicyActor, Policy_v1_3, EnvRunner, GAE, AccumReturn, TrajectorySampler, \
-    NormalizeAdvantages, NormalizeReturns, PPO, PolicyGradient, TrainingTracker, MLPSeparatePolicy, MLPSepDelayStep, \
+    TrajectorySampler_v1_1, NormalizeAdvantages, NormalizeReturns, PPO, PolicyGradient, TrainingTracker, MLPSeparatePolicy, MLPSepDelayStep, \
     MLPSepDelaySepStepStepID, MLPConditionalStep

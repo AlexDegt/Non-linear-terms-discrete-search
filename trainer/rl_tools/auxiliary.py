@@ -3,6 +3,9 @@ import torch
 import os, sys
 import pandas as pd
 
+import warnings
+warnings.filterwarnings("ignore", message=".*converting a masked element to nan.*")
+
 class GAE:
     """ Generalized Advantage Estimator. """
     def __init__(self, policy, gamma=0.99, lambda_=0.95):
@@ -90,20 +93,16 @@ class NormalizeReturns:
     def __init__(self, beta=0.0):
         self.beta = beta
         self.baseline = 0
-    def __call__(self, trajectory, traj_per_batch, mask=None, eps=1e-8):
-        returns = np.asarray(trajectory["returns"]).flatten()
-        var = np.var(returns)
-        mean = np.mean(returns)
+    def __call__(self, trajectory, mask=None, eps=1e-8):
+        # returns = np.asarray(trajectory["returns"]).flatten()
+        # returns = np.asarray(trajectory["returns"])
+        returns = trajectory["returns"].copy()
+        var = returns.var()
+        mean = returns.mean()
+        # print(var)
+        # print(mean)
+        # sys.exit()
         trajectory["returns"] = (returns - mean) / np.sqrt(var + eps)
-        # var = np.var(returns[returns != 0])
-        # mean = np.mean(returns[returns != 0])
-        # returns = (returns - mean) / np.sqrt(var + eps)
-        # if mask is not None:
-        #     returns = returns.reshape(traj_per_batch, -1)
-        #     returns[mask] = 0
-        #     # print(returns)
-        #     returns = returns.reshape(-1)
-        # trajectory["returns"] = returns
 
 class AsArray:
     """ 
@@ -232,14 +231,14 @@ class TrainingTracker:
         rewards = np.mean(minibatch["rewards"].flatten()[traj_len - 1::traj_len])
         self.rewards_last_mean.append(rewards)
         if self.save_path is not None:
-            np.save(os.path.join(self.save_path, f"rewards_last_mean.npy"), np.asarray(self.rewards_last_mean))
+            np.save(os.path.join(self.save_path, f"rewards_last_mean.npy"), np.ma.filled(self.rewards_last_mean, np.nan))
 
     def accum_rewards_mean(self, minibatch):
         """ Calculates mean of reward in whole minibatch """
         rewards = np.mean(minibatch["rewards"].flatten())
         self.rewards_mean.append(rewards)
         if self.save_path is not None:
-            np.save(os.path.join(self.save_path, f"rewards_mean.npy"), np.asarray(self.rewards_mean))
+            np.save(os.path.join(self.save_path, f"rewards_mean.npy"), np.ma.filled(self.rewards_mean, np.nan))
 
     def accum_rewards_max_mean(self, minibatch):
         """ Calculates mean of the max reward in trajectory """
@@ -248,7 +247,7 @@ class TrainingTracker:
         rewards = np.mean(rewards_max_per_traj)
         self.rewards_max_mean.append(rewards)
         if self.save_path is not None:
-            np.save(os.path.join(self.save_path, f"rewards_max_mean.npy"), np.asarray(self.rewards_max_mean))
+            np.save(os.path.join(self.save_path, f"rewards_max_mean.npy"), np.ma.filled(self.rewards_max_mean, np.nan))
     
     def accum_rewards_max(self, minibatch):
         """ Calculates max of the last reward in trajectory """
@@ -256,7 +255,7 @@ class TrainingTracker:
         rewards = np.max(minibatch["rewards"].flatten()[traj_len - 1::traj_len])
         self.rewards_max.append(rewards)
         if self.save_path is not None:
-            np.save(os.path.join(self.save_path, f"rewards_max.npy"), np.asarray(self.rewards_max))
+            np.save(os.path.join(self.save_path, f"rewards_max.npy"), np.ma.filled(self.rewards_max, np.nan))
 
     def accum_rewards_min(self, minibatch):
         """ Calculates min of the last reward in trajectory """
@@ -264,7 +263,7 @@ class TrainingTracker:
         rewards = np.min(minibatch["rewards"].flatten()[traj_len - 1::traj_len])
         self.rewards_min.append(rewards)
         if self.save_path is not None:
-            np.save(os.path.join(self.save_path, f"rewards_min.npy"), np.asarray(self.rewards_min))
+            np.save(os.path.join(self.save_path, f"rewards_min.npy"), np.ma.filled(self.rewards_min, np.nan))
 
     def accum_r2(self, minibatch):
         """ R2 used to evaluate critic value prediction quality """
@@ -277,7 +276,7 @@ class TrainingTracker:
             r2_score = 1 - ss_res / ss_tot
         self.r2_score.append(r2_score)
         if self.save_path is not None:
-            np.save(os.path.join(self.save_path, f"r2_score.npy"), np.asarray(self.r2_score))
+            np.save(os.path.join(self.save_path, f"r2_score.npy"), np.ma.filled(self.r2_score, np.nan))
 
     def accum_entropy(self, minibatch):
         with torch.no_grad():
@@ -287,7 +286,7 @@ class TrainingTracker:
             entropy = self.alg.explore_loss(minibatch, act).item()
             self.policy_entropy.append(entropy)
         if self.save_path is not None:
-            np.save(os.path.join(self.save_path, f"policy_entropy.npy"), np.asarray(self.policy_entropy))
+            np.save(os.path.join(self.save_path, f"policy_entropy.npy"), np.ma.filled(self.policy_entropy, np.nan))
 
     def accum_value_loss(self, minibatch):
         with torch.no_grad():
@@ -297,7 +296,7 @@ class TrainingTracker:
             value_loss = self.alg.value_loss(minibatch, act).item()
             self.value_loss.append(value_loss)
         if self.save_path is not None:
-            np.save(os.path.join(self.save_path, f"value_loss.npy"), np.asarray(self.value_loss))
+            np.save(os.path.join(self.save_path, f"value_loss.npy"), np.ma.filled(self.value_loss, np.nan))
 
     def accum_policy_loss(self, minibatch):
         with torch.no_grad():
@@ -307,13 +306,13 @@ class TrainingTracker:
             policy_loss = self.alg.policy_loss(minibatch, act).item()
             self.policy_loss.append(policy_loss)
         if self.save_path is not None:
-            np.save(os.path.join(self.save_path, f"policy_loss.npy"), np.asarray(self.policy_loss))
+            np.save(os.path.join(self.save_path, f"policy_loss.npy"), np.ma.filled(self.policy_loss, np.nan))
 
     def accum_value_targets(self, minibatch):
         value_targets = np.mean(minibatch["value_targets"].flatten())
         self.value_targets.append(value_targets)
         if self.save_path is not None:
-            np.save(os.path.join(self.save_path, f"value_targets.npy"), np.asarray(self.value_targets))
+            np.save(os.path.join(self.save_path, f"value_targets.npy"), np.ma.filled(self.value_targets, np.nan))
 
     def accum_value_predicts(self, minibatch):
         with torch.no_grad():
@@ -323,7 +322,7 @@ class TrainingTracker:
             value_predicts = np.mean(act["values"].detach().cpu().numpy().flatten())
             self.value_predicts.append(value_predicts)
         if self.save_path is not None:
-            np.save(os.path.join(self.save_path, f"value_predicts.npy"), np.asarray(self.value_predicts))
+            np.save(os.path.join(self.save_path, f"value_predicts.npy"), np.ma.filled(self.value_predicts, np.nan))
 
     def accum_grad_norm(self):
         with torch.no_grad():
@@ -331,7 +330,7 @@ class TrainingTracker:
             grad_norm = torch.sqrt(torch.stack(grads).sum()).item()
         self.grad_norm.append(grad_norm)
         if self.save_path is not None:
-            np.save(os.path.join(self.save_path, f"grad_norm.npy"), np.asarray(self.grad_norm))
+            np.save(os.path.join(self.save_path, f"grad_norm.npy"), np.ma.filled(self.grad_norm, np.nan))
 
     def accum_policy_grad_norm(self):
         with torch.no_grad():
@@ -339,7 +338,7 @@ class TrainingTracker:
             grad_norm = torch.sqrt(torch.stack(grads).sum()).item()
         self.grad_norm_policy.append(grad_norm)
         if self.save_path is not None:
-            np.save(os.path.join(self.save_path, f"grad_norm_policy.npy"), np.asarray(self.grad_norm_policy))
+            np.save(os.path.join(self.save_path, f"grad_norm_policy.npy"), np.ma.filled(self.grad_norm_policy, np.nan))
 
     def accum_value_grad_norm(self):
         with torch.no_grad():
@@ -347,19 +346,19 @@ class TrainingTracker:
             grad_norm = torch.sqrt(torch.stack(grads).sum()).item()
         self.grad_norm_value.append(grad_norm)
         if self.save_path is not None:
-            np.save(os.path.join(self.save_path, f"grad_norm_value.npy"), np.asarray(self.grad_norm_value))
+            np.save(os.path.join(self.save_path, f"grad_norm_value.npy"), np.ma.filled(self.grad_norm_value, np.nan))
 
     def accum_advantages(self, minibatch):
         advantages = np.mean(minibatch["advantages"].flatten())
         self.advantages.append(advantages)
         if self.save_path is not None:
-            np.save(os.path.join(self.save_path, f"advantages.npy"), np.asarray(self.advantages))
+            np.save(os.path.join(self.save_path, f"advantages.npy"), np.ma.filled(self.advantages, np.nan))
 
     def accum_returns(self, minibatch):
         returns = np.mean(minibatch["returns"].flatten())
         self.returns.append(returns)
         if self.save_path is not None:
-            np.save(os.path.join(self.save_path, f"returns.npy"), np.asarray(self.returns))
+            np.save(os.path.join(self.save_path, f"returns.npy"), np.ma.filled(self.returns, np.nan))
 
     def accum_best_perform(self, minibatch):
         """
@@ -370,11 +369,11 @@ class TrainingTracker:
         best_perform = self.env.best_perform
         self.best_perform_list.append(best_perform)
         if self.save_path is not None:
-            np.save(os.path.join(self.save_path, "best_perform.npy"), np.asarray(self.best_perform_list))
+            np.save(os.path.join(self.save_path, "best_perform.npy"), np.ma.filled(self.best_perform, np.nan))
             if best_perform < self.best_perform:
                 self.best_perform = best_perform
                 self.best_delays = self.env.best_delays
-                np.save(os.path.join(self.save_path, "best_delays.npy"), np.asarray(self.best_delays))
+                np.save(os.path.join(self.save_path, "best_delays.npy"), np.ma.filled(self.best_delays, np.nan))
                 torch.save(self.env.tomb_raider.state_dict(), os.path.join(self.save_path, "best_params.pt"))
 
     def approx_kl(self, trajectory):
@@ -397,7 +396,7 @@ class TrainingTracker:
             approx_kl = (-1 * approx_kl / (2 * delays2change_num)).mean().item()
             self.approx_kl_list.append(approx_kl)
         if self.save_path is not None:
-            np.save(os.path.join(self.save_path, f"approx_kl.npy"), np.asarray(self.approx_kl_list))
+            np.save(os.path.join(self.save_path, f"approx_kl.npy"), np.ma.filled(self.approx_kl_list, np.nan))
 
     def clip_fraction(self, trajectory):
         eps = self.alg.cliprange_policy
@@ -421,5 +420,5 @@ class TrainingTracker:
             clip_fraction = ((import_samp_ratio < 1.0 - eps) | (import_samp_ratio > 1.0 + eps)).float().mean().item()
             self.clip_fraction_list.append(clip_fraction)
         if self.save_path is not None:
-            np.save(os.path.join(self.save_path, f"clip_fraction.npy"), np.asarray(self.clip_fraction_list))
+            np.save(os.path.join(self.save_path, f"clip_fraction.npy"), np.ma.filled(self.clip_fraction, np.nan))
 

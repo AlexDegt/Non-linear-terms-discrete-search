@@ -159,6 +159,7 @@ class PolicyGradient:
         """ Computes and returns policy loss on a given trajectory. """
         actions = torch.tensor(trajectory["actions"], device=self.policy.agent.device)
         returns = torch.tensor(trajectory["returns"], device=self.policy.agent.device)
+        mask = torch.tensor(trajectory["mask"], device=self.policy.agent.device)
         policy = act['distribution']
         delays2change_num = actions.shape[1]
         log_policy = 0
@@ -168,8 +169,7 @@ class PolicyGradient:
             log_prob_step_ind = distr_step_ind.log_prob(actions[:, j_delay, 1])
             log_policy += log_prob_ind + log_prob_step_ind
         # log_policy /= (2 * delays2change_num)
-        # return -1 * torch.mean(log_policy[returns != 0] * returns[returns != 0])
-        return -1 * torch.mean(log_policy * returns)
+        return -1 * (log_policy * returns * (~mask)).sum() / (~mask).sum()
 
     def explore_loss(self, trajectory, act):
         """ Computes policy entropy on a given trajectory. """

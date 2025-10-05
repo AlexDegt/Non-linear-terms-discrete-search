@@ -9,9 +9,8 @@ trial_descript: Training of 1D Chebyshev polynomial-based model
 # trial_name: start_from_m7_7_m7_max_step_2_step_num_40_return_mode_max
 # trial_name: start_from_m7_7_m7_max_step_2_step_num_15_return_mode_max
 # trial_name: start_from_m4_3_m4_max_step_2_step_num_7_return_mode_max
-# trial_name: start_from_m4_3_1_max_step_2_step_num_5_return_mode_max_cond_step_head
-trial_name: start_from_m4_3_1_max_step_2_step_num_5_return_mode_max
-# trial_name: test
+# trial_name: start_from_m4_3_m4_max_step_2_step_num_7_return_mode_max_cond_step_head
+trial_name: test
 
 # trial_name: sgd_full_grad_adam_10k_epochs_4_pow_dim_mu_1e_3_stand_tx
 # trial_name: test
@@ -49,25 +48,25 @@ state_alpha: 0.0
 reward_alpha: 0.0
 # Initial delays
 start_mode: same
-init_delays: [[-4, 3, 1]]
+init_delays: [[-4, 3, -4]]
 
 # Parameters of MLP agent
 hidden_delay_ind_size: 256
 hidden_delay_ind_num: 6
 hidden_delay_step_size: 256
 hidden_delay_step_num: 6
-stepid_embed_size: 48
+stepid_embed_size: 6
 ind_choice_embed_size: 50
 hidden_shared_size: 256
 hidden_shared_num: 3
 # General training parameters
-num_runner_steps: 5 # Steps in trajectory
-traj_per_batch: 100 # Number of trajectories per batch
+num_runner_steps: 7 # Steps in trajectory
+traj_per_batch: 5 # Number of trajectories per batch
 # 'discount' - disount with gamma, 'terminal' - terminal return, 'max' - max(rewards) return 
 accum_return_mode: 'max'
 # All steps in trajectory after maximum reward-step are masked
 # Which means that they are not taken into account in training
-mask_max: False
+mask_max: True
 gamma: 0.5 # discount. Used only if accum_return_mode == 'discount'
 # gamma: 0.8 # discount
 num_minibatches: 1 # Number of mini-batches to divide whole trajectory into
