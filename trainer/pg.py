@@ -117,7 +117,7 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
 
     # Define parameters of agent
     state_dim = len(model.delays[0]) * len(model.delays)
-    delays_steps_num = 2 * max_delay_step + 1
+    delays_steps_num = 2 * max_delay_step# + 1
     # hidden_shared_size = config["hidden_shared_size"]
     # hidden_shared_num = config["hidden_shared_num"]
     hidden_delay_ind_size = config["hidden_delay_ind_size"]

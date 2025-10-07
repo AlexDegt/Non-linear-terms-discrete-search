@@ -198,7 +198,8 @@ class PerformanceEnv(gym.Env):
             with no_print():
                 _, perform_db = self.__train_tomb_raider()
             # Reward design...
-            reward = (10 ** (-1 * perform_db / 10) / 40 - 0.5) / 100
+            # reward = (10 ** (-1 * perform_db / 10) / 40 - 0.5) / 100
+            reward = -1 * perform_db
             self.oracle_buffer = pd.concat([
                 self.oracle_buffer,
                 pd.DataFrame([{'state': copy(self.state), 'reward': reward}])
@@ -213,7 +214,7 @@ class PerformanceEnv(gym.Env):
 
     def step_ind_to_step(self, delay_step_ind):
         steps = np.arange(-self.__max_delay_step, self.__max_delay_step + 1, 1)
-        # steps = steps[steps != 0]
+        steps = steps[steps != 0]
         if not isinstance(delay_step_ind, np.ma.MaskedArray):
             return steps[delay_step_ind]
         else:
