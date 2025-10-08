@@ -142,6 +142,10 @@ tmp2 = jac_0 @ inverse
 proj = tmp2 @ tmp1
 jac_1_ort = jac_1 - proj
 
+print(f"Sum = {(jac_0.conj().T @ jac_1_ort).abs().sum()}")
+print(f"Mean = {(jac_0.conj().T @ jac_1_ort).abs().mean()}")
+print(f"Max = {(jac_0.conj().T @ jac_1_ort).abs().max()}")
+
 jac = torch.cat((jac_0, jac_1_ort), dim=1)
 
 # Calculate optimal parameters
@@ -155,3 +159,16 @@ e_ort_numpy = e_ort.detach().cpu().numpy()
 np.save(os.path.join(save_path, r'e_ort.npy'), e_ort_numpy)
 
 print(f"sum(|e_simple - e_ort|/sum(|e_simple|) = {sum(abs(e_simple_numpy - e_ort_numpy))/sum(abs(e_simple_numpy)):.7f}")
+
+""" Third approach with orthogonalization of jac_1 w.r.t. jac_0 """
+
+c_0 = torch.linalg.pinv(jac_0.T.conj() @ jac_0) @ jac_0.T.conj() @ d
+e_0 = d - jac_0 @ c_0
+c_1 = torch.linalg.pinv(jac_1_ort.T.conj() @ jac_1_ort) @ jac_1_ort.T.conj() @ e_0
+e_ort_1 = e_0 - jac_1_ort @ c_1
+
+# Save error
+e_ort_1_numpy = e_ort_1.detach().cpu().numpy()
+np.save(os.path.join(save_path, r'e_ort_1.npy'), e_ort_1_numpy)
+
+print(f"sum(|e_simple - e_ort_1|/sum(|e_simple|) = {sum(abs(e_simple_numpy - e_ort_1_numpy))/sum(abs(e_simple_numpy)):.7f}")

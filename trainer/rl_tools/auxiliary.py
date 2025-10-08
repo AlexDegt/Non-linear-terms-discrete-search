@@ -93,15 +93,14 @@ class NormalizeReturns:
     def __init__(self, beta=0.0):
         self.beta = beta
         self.baseline = 0
-    def __call__(self, trajectory, mask=None, eps=1e-8):
+    def __call__(self, trajectory, mask=None, eps=1e-3):
         # returns = np.asarray(trajectory["returns"]).flatten()
         # returns = np.asarray(trajectory["returns"])
         returns = trajectory["returns"].copy()
-        var = returns.var()
-        mean = returns.mean()
-        # print(var)
-        # print(mean)
-        # sys.exit()
+        # var = returns.var() # very bad
+        # mean = returns.mean() # very bad
+        mean = returns.mean(axis=0, keepdims=True)
+        var = returns.var(axis=0, keepdims=True)
         trajectory["returns"] = (returns - mean) / np.sqrt(var + eps)
 
 class AsArray:

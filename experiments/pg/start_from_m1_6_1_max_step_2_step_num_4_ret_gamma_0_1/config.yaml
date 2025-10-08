@@ -5,7 +5,7 @@ trial_descript: Training of 1D Chebyshev polynomial-based model
 # trial_name: start_from_m7_0_1_max_step_7_step_num_1
 # trial_name: start_from_m7_0_1_max_step_7_step_num_1_ret_norm
 # trial_name: start_from_m7_7_m7_max_step_1_step_num_21_ret_norm_gamma_0_2
-trial_name: start_from_m1_6_1_max_step_2_step_num_5_ret_norm_gamma_0_1
+trial_name: start_from_m1_6_1_max_step_2_step_num_4_ret_norm_gamma_0_1
 # trial_name: test
 
 # trial_name: sgd_full_grad_adam_10k_epochs_4_pow_dim_mu_1e_3_stand_tx
@@ -56,7 +56,7 @@ ind_choice_embed_size: 50
 hidden_shared_size: 256
 hidden_shared_num: 3
 # General training parameters
-num_runner_steps: 5 # Steps in trajectory
+num_runner_steps: 4 # Steps in trajectory
 traj_per_batch: 100 # Number of trajectories per batch
 # 'discount' - disount with gamma, 'terminal' - terminal return, 'max' - max(rewards) return 
 accum_return_mode: 'discount'
