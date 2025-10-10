@@ -2,6 +2,7 @@ import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 import torch.nn as nn
+import torch
 
 from contextlib import contextmanager
 from collections import defaultdict
@@ -361,6 +362,8 @@ class EnvRunner:
             norm_param = max(max(abs(self.env.state_space.high)), max(abs(self.env.state_space.low)))
             inputs = {"state": observations[-1] / norm_param,
                       "time": [time_steps[-1]]}
+            # with torch.no_grad():
+            #     act = self.policy.act(inputs)
             act = self.policy.act(inputs)
             if "actions" not in act:
                 raise ValueError("result of policy.act must contain 'actions' "
@@ -374,6 +377,75 @@ class EnvRunner:
             self.state["latest_observation"] = deepcopy(obs)
             rewards.append(rew)
             resets.append(done)
+
+        trajectory.update(
+            observations=observations,
+            rewards=rewards,
+            resets=resets,
+            time_steps=time_steps)
+        trajectory["state"] = deepcopy(self.state)
+
+        for transform in self.transforms:
+            transform(trajectory)
+        
+        return trajectory
+
+class EnvRunnerMemory:
+    """ Reinforcement learning runner in an environment with given policy """
+
+    def __init__(self, env, policy, nsteps, mem_len, transforms=None, step_var=None):
+        self.env = env
+        self.policy = policy
+        self.nsteps = nsteps
+        self.transforms = transforms or []
+        self.step_var = step_var if step_var is not None else 0
+        self.state = {"latest_observation": self.env.reset()[0]}
+        self.mem_len = mem_len
+
+    @property
+    def nenvs(self):
+        """ Returns number of batched envs or `None` if env is not batched """
+        return getattr(self.env.unwrapped, "nenvs", None)
+
+    def reset(self, **kwargs):
+        """ Resets env and runner states. """
+        self.state["latest_observation"], info = self.env.reset(**kwargs)
+        tmp = self.state["latest_observation"]
+        self.policy.reset()
+
+    def get_next(self):
+        """ Runs the agent in the environment.  """
+        trajectory = defaultdict(list, {"actions": []})
+        observations = []
+        rewards = []
+        resets = []
+        time_steps = []
+        self.state["env_steps"] = self.nsteps
+
+        for i in range(self.nsteps):
+            observations.append(deepcopy(self.state["latest_observation"]))
+            time_steps.append(i)
+            norm_param = max(max(abs(self.env.state_space.high)), max(abs(self.env.state_space.low)))
+            inputs = {"state": observations[-self.mem_len:] / norm_param,
+                      "time": [time_steps[-1]]}
+            # with torch.no_grad():
+            #     act = self.policy.act(inputs)
+            act = self.policy.act(inputs)
+            if "actions" not in act:
+                raise ValueError("result of policy.act must contain 'actions' "
+                                 f"but has keys {list(act.keys())}")
+            for key, val in act.items():
+                trajectory[key].append(val)
+
+            obs, rew, terminated, truncated, _ = self.env.step(trajectory['actions'][-1])
+
+            done = np.logical_or(terminated, truncated)
+            self.state["latest_observation"] = deepcopy(obs)
+            rewards.append(rew)
+            resets.append(done)
+
+        print(np.array(observations).shape)
+        sys.exit()
 
         trajectory.update(
             observations=observations,

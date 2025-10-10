@@ -1,6 +1,7 @@
 import torch
 import math
 import sys
+from torch.distributions import Categorical
 
 class PPO:
     def __init__(self, policy, optimizer,
@@ -155,12 +156,25 @@ class PolicyGradient:
         self.explore_loss_coef = explore_loss_coef
         self.max_grad_norm = max_grad_norm
 
+        self.policy_loss_list = []
+        self.explore_loss_list = []
+        self.distr_list = []
+
     def policy_loss(self, trajectory, act):
         """ Computes and returns policy loss on a given trajectory. """
         actions = torch.tensor(trajectory["actions"], device=self.policy.agent.device)
         returns = torch.tensor(trajectory["returns"], device=self.policy.agent.device)
         mask = torch.tensor(trajectory["mask"], device=self.policy.agent.device)
         policy = act['distribution']
+
+        distr_detached = []
+        for d in policy:
+            distr_detached_nested = []
+            for d_nested in d:
+                distr_detached_nested.append(d_nested.probs.detach())
+            distr_detached.append(distr_detached_nested)
+        self.distr_list.append(distr_detached)
+
         delays2change_num = actions.shape[1]
         log_policy = 0
         for j_delay in range(delays2change_num):
@@ -168,8 +182,11 @@ class PolicyGradient:
             log_prob_ind = distr_ind.log_prob(actions[:, j_delay, 0])
             log_prob_step_ind = distr_step_ind.log_prob(actions[:, j_delay, 1])
             log_policy += log_prob_ind + log_prob_step_ind
-        # log_policy /= (2 * delays2change_num)
-        return -1 * (log_policy * returns * (~mask)).sum() / (~mask).sum()
+        log_policy /= (2 * delays2change_num)
+        # print(sum(~mask).item())
+        loss = -1 * (log_policy * returns * ((-1) * ~mask)).sum() / ((-1) * ~mask).sum()
+        self.policy_loss_list.append(loss.item())
+        return loss
 
     def explore_loss(self, trajectory, act):
         """ Computes policy entropy on a given trajectory. """
@@ -178,6 +195,7 @@ class PolicyGradient:
         entropy = 0
         for distr_ind, distr_step_ind in policy:
             entropy += distr_ind.entropy().mean() + distr_step_ind.entropy().mean()
+        self.explore_loss_list.append(entropy.item())
         return entropy
 
     def loss(self, trajectory):
@@ -192,6 +210,7 @@ class PolicyGradient:
         """ Computes the loss function and performs a single gradient step. """
         self.optimizer.zero_grad()
         
+        self.policy.agent.train()
         loss = self.loss(trajectory)
         loss.backward()
 

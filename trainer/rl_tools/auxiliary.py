@@ -97,11 +97,19 @@ class NormalizeReturns:
         # returns = np.asarray(trajectory["returns"]).flatten()
         # returns = np.asarray(trajectory["returns"])
         returns = trajectory["returns"].copy()
-        # var = returns.var() # very bad
-        # mean = returns.mean() # very bad
-        mean = returns.mean(axis=0, keepdims=True)
-        var = returns.var(axis=0, keepdims=True)
-        trajectory["returns"] = (returns - mean) / np.sqrt(var + eps)
+        var = returns.var() # very bad
+        mean = returns.mean() # very bad
+        # mean = returns.mean(axis=1, keepdims=True)
+        # var = returns.var(axis=1, keepdims=True)
+        # print(f"Min(Var)_traj = {np.min(var)}")
+        # trajectory["returns"] = np.tanh((returns - mean) / np.sqrt(var + eps))
+        # trajectory["returns"] = np.clip((returns - mean) / np.sqrt(var + eps), -1, 1)
+        # trajectory["returns"] = returns
+        # trajectory["returns"] = returns - mean
+        ret = (returns - mean) / np.sqrt(var + eps)
+        # print(max(ret))
+        trajectory["returns"] = ret
+        # trajectory["returns"] = (returns - mean) / np.sqrt(var + eps)
 
 class AsArray:
     """ 
@@ -155,6 +163,7 @@ class TrainingTracker:
         self.grad_norm_value = []
         self.advantages = []
         self.returns = []
+        self.log_policy = []
         self.best_perform_list = []
         self.best_perform = 100
         self.best_delays = []
@@ -174,55 +183,64 @@ class TrainingTracker:
             trajectory (dict): Batched whole(!) trajectory to gather statistics from.
             curr_epoch (int): current epoch.
         """
-        if curr_epoch in self.log_epochs:
-            with torch.no_grad():
-                inputs = {"state": trajectory["observations"],
-                          "time": trajectory["time_steps"]}
-                act = self.alg.policy.act(inputs, training=True)
-            # Calcualte trajectory length
-            traj_len = len(trajectory["rewards"].flatten()) // self.traj_per_batch
-            if self.log_trajs[1] + 1 > self.traj_per_batch:
-                 self.log_trajs[1] = self.traj_per_batch - 1
-            for j_traj in range(*self.log_trajs):
-                for j_obs in range(traj_len):
-                    for j_d2ch in range(self.env.delays2change_num):
-                        action = trajectory['actions'].reshape(self.traj_per_batch, traj_len, -1, 2)[j_traj, j_obs, j_d2ch, :]
-                        # Modify step index into step
-                        action[1] = self.env.step_ind_to_step(action[1])
-                        new_row = {
-                            'epoch': curr_epoch,
-                            'trajectory': j_traj,
-                            'state': trajectory['observations'].reshape(self.traj_per_batch, -1, self.env.delays_number)[j_traj, j_obs, :],
-                            'action': action,
-                            'reward': trajectory['rewards'].reshape(self.traj_per_batch, -1)[j_traj, j_obs],
-                            'return': trajectory['returns'].reshape(self.traj_per_batch, -1)[j_traj, j_obs],
-                            f'ind {j_d2ch}': act['distribution'][j_d2ch][0].probs.detach().cpu().numpy().reshape(self.traj_per_batch, traj_len, -1)[j_traj, j_obs, :].tolist(),
-                            f'step {j_d2ch}': act['distribution'][j_d2ch][1].probs.detach().cpu().numpy().reshape(self.traj_per_batch, traj_len, -1)[j_traj, j_obs, :].tolist()
-                        }
-                        self.log.loc[len(self.log)] = new_row
+        self.alg.policy.agent.eval()
+        with torch.no_grad():
+            if curr_epoch in self.log_epochs:
+                # inputs = {"state": trajectory["observations"],
+                #         "time": trajectory["time_steps"]}
+                # act = self.alg.policy.act(inputs, training=True)
+                # Calcualte trajectory length
+                traj_len = len(trajectory["rewards"].flatten()) // self.traj_per_batch
+                if self.log_trajs[1] + 1 > self.traj_per_batch:
+                    self.log_trajs[1] = self.traj_per_batch - 1
+                for j_traj in range(*self.log_trajs):
+                    for j_obs in range(traj_len):
+                        for j_d2ch in range(self.env.delays2change_num):
+                            action = trajectory['actions'].reshape(self.traj_per_batch, traj_len, -1, 2)[j_traj, j_obs, j_d2ch, :]
+                            # Modify step index into step
+                            action[1] = self.env.step_ind_to_step(action[1])
+                            new_row = {
+                                'epoch': curr_epoch,
+                                'trajectory': j_traj,
+                                'state': trajectory['observations'].reshape(self.traj_per_batch, -1, self.env.delays_number)[j_traj, j_obs, :],
+                                'action': action,
+                                'reward': trajectory['rewards'].reshape(self.traj_per_batch, -1)[j_traj, j_obs],
+                                'return': trajectory['returns'].reshape(self.traj_per_batch, -1)[j_traj, j_obs],
+                                # f'ind {j_d2ch}': act['distribution'][j_d2ch][0].probs.detach().cpu().numpy().reshape(self.traj_per_batch, traj_len, -1)[j_traj, j_obs, :].tolist(),
+                                # f'step {j_d2ch}': act['distribution'][j_d2ch][1].probs.detach().cpu().numpy().reshape(self.traj_per_batch, traj_len, -1)[j_traj, j_obs, :].tolist()
+                                # f'ind {j_d2ch}': self.alg.distr_list[-1][j_d2ch][0].probs.detach().cpu().numpy().reshape(self.traj_per_batch, traj_len, -1)[j_traj, j_obs, :].tolist(),
+                                # f'step {j_d2ch}': self.alg.distr_list[-1][j_d2ch][1].probs.detach().cpu().numpy().reshape(self.traj_per_batch, traj_len, -1)[j_traj, j_obs, :].tolist()
+                                f'ind {j_d2ch}': self.alg.distr_list[-1][j_d2ch][0].cpu().numpy().reshape(self.traj_per_batch, traj_len, -1)[j_traj, j_obs, :].tolist(),
+                                f'step {j_d2ch}': self.alg.distr_list[-1][j_d2ch][1].cpu().numpy().reshape(self.traj_per_batch, traj_len, -1)[j_traj, j_obs, :].tolist()
+                            }
+                            self.log.loc[len(self.log)] = new_row
 
-            self.log.to_excel(os.path.join(self.save_path, "log.xlsx"), sheet_name="Training log", index=False)
+                self.log.to_excel(os.path.join(self.save_path, "log.xlsx"), sheet_name="Training log", index=False)
 
     def accum_stat(self, minibatch):
 
-        self.accum_rewards_last_mean(minibatch)
-        self.accum_rewards_mean(minibatch)
-        self.accum_rewards_max_mean(minibatch)
-        self.accum_entropy(minibatch)
-        self.accum_policy_loss(minibatch)
-        self.accum_grad_norm()
-        self.accum_best_perform(minibatch)
+        self.alg.policy.agent.eval()
+        with torch.no_grad():
+            self.accum_rewards_last_mean(minibatch)
+            self.accum_rewards_mean(minibatch)
+            self.accum_rewards_max_mean(minibatch)
+            self.accum_entropy(minibatch)
+            self.accum_policy_loss(minibatch)
+            self.accum_grad_norm()
+            self.accum_best_perform(minibatch)
 
-        if self.alg_type == 'ppo':
-            self.accum_r2(minibatch)
-            self.accum_value_loss(minibatch)
-            self.accum_value_targets(minibatch)
-            self.accum_value_predicts(minibatch)
-            self.accum_policy_grad_norm()
-            self.accum_value_grad_norm()
-            self.accum_advantages(minibatch)
-        elif self.alg_type == 'pg':
-            self.accum_returns(minibatch)       
+            if self.alg_type == 'ppo':
+                pass
+                # self.accum_r2(minibatch)
+                # self.accum_value_loss(minibatch)
+                # self.accum_value_targets(minibatch)
+                # self.accum_value_predicts(minibatch)
+                # self.accum_policy_grad_norm()
+                # self.accum_value_grad_norm()
+                # self.accum_advantages(minibatch)
+            elif self.alg_type == 'pg':
+                self.accum_returns(minibatch)
+                self.accum_log_policy(minibatch)
 
     def accum_rewards_last_mean(self, minibatch):
         """ Calculates mean of the last reward in trajectory """
@@ -278,12 +296,7 @@ class TrainingTracker:
             np.save(os.path.join(self.save_path, f"r2_score.npy"), np.ma.filled(self.r2_score, np.nan))
 
     def accum_entropy(self, minibatch):
-        with torch.no_grad():
-            inputs = {"state": minibatch["observations"],
-                      "time": minibatch["time_steps"]}
-            act = self.alg.policy.act(inputs, training=True)
-            entropy = self.alg.explore_loss(minibatch, act).item()
-            self.policy_entropy.append(entropy)
+        self.policy_entropy = self.alg.explore_loss_list
         if self.save_path is not None:
             np.save(os.path.join(self.save_path, f"policy_entropy.npy"), np.ma.filled(self.policy_entropy, np.nan))
 
@@ -298,12 +311,7 @@ class TrainingTracker:
             np.save(os.path.join(self.save_path, f"value_loss.npy"), np.ma.filled(self.value_loss, np.nan))
 
     def accum_policy_loss(self, minibatch):
-        with torch.no_grad():
-            inputs = {"state": minibatch["observations"],
-                      "time": minibatch["time_steps"]}
-            act = self.alg.policy.act(inputs, training=True)
-            policy_loss = self.alg.policy_loss(minibatch, act).item()
-            self.policy_loss.append(policy_loss)
+        self.policy_loss = self.alg.policy_loss_list
         if self.save_path is not None:
             np.save(os.path.join(self.save_path, f"policy_loss.npy"), np.ma.filled(self.policy_loss, np.nan))
 
@@ -358,6 +366,12 @@ class TrainingTracker:
         self.returns.append(returns)
         if self.save_path is not None:
             np.save(os.path.join(self.save_path, f"returns.npy"), np.ma.filled(self.returns, np.nan))
+
+    def accum_log_policy(self, minibatch):
+        log_policy = np.mean(minibatch["log_probs"])
+        self.log_policy.append(log_policy)
+        if self.save_path is not None:
+            np.save(os.path.join(self.save_path, f"log_policy.npy"), np.ma.filled(self.log_policy, np.nan))
 
     def accum_best_perform(self, minibatch):
         """
@@ -420,4 +434,5 @@ class TrainingTracker:
             self.clip_fraction_list.append(clip_fraction)
         if self.save_path is not None:
             np.save(os.path.join(self.save_path, f"clip_fraction.npy"), np.ma.filled(self.clip_fraction, np.nan))
+
 

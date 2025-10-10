@@ -16,7 +16,7 @@ sys.path.append('../../')
 
 from utils import Timer
 from oracle import Oracle
-from .rl_tools import PerformanceEnv, NormalizeWrapper, TrajectoryNormalizeWrapper, EnvRunner, TrajectorySampler_v1_1
+from .rl_tools import PerformanceEnv, NormalizeWrapper, TrajectoryNormalizeWrapper, EnvRunner, EnvRunnerMemory, TrajectorySampler_v1_1
 from .rl_tools import MLPSepDelayStep, MLPSepDelaySepStep, MLPSepDelaySepStepStepID, MLPConditionalStep, PolicyActor, Policy_v1_3
 from .rl_tools import AccumReturn, AsArray, NormalizeReturns, TrainingTracker
 from .rl_tools import PolicyGradient
@@ -128,6 +128,7 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
     ind_choice_embed_size = config["ind_choice_embed_size"]
     hidden_shared_size = config["hidden_shared_size"]
     hidden_shared_num = config["hidden_shared_num"]
+    mem_len = config["mem_len"]
     # agent = MLPConditionalStep(state_dim, delays2change_num, delays_steps_num,
     #                         num_runner_steps, stepid_embed_size, ind_choice_embed_size,
     #                         hidden_shared_size, hidden_shared_num,
@@ -150,7 +151,8 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
                         num_epochs=10, num_minibatches=32):
         """ Creates runner for PPO algorithm. """
         runner_transforms = [AsArray(), AccumReturn(policy, gamma=gamma, mode=accum_return_mode)]
-        runner = EnvRunner(env, policy, num_runner_steps, transforms=runner_transforms)
+        runner = EnvRunnerMemory(env, policy, num_runner_steps, mem_len, transforms=runner_transforms)
+        # runner = EnvRunner(env, policy, num_runner_steps, transforms=runner_transforms)
 
         sampler_transforms = [NormalizeReturns()]
         # sampler_transforms = []
@@ -188,15 +190,17 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
     for epoch in range(epochs):
         t_epoch_start = time.time()
 
-        trajectory, whole_trajectory = runner.get_next(return_whole=True)
+        trajectory, _ = runner.get_next(return_whole=True)
 
         tracker.save_oracle_buffer()
 
         pg.step(trajectory)
         sched.step()
-        tracker.accum_stat(whole_trajectory)
+        tracker.accum_stat(trajectory)
 
-        tracker.log_steps(whole_trajectory, epoch)
+        # Calls one more act through minibatch trajectories
+        tracker.approx_kl(trajectory)
+        tracker.log_steps(trajectory, epoch)
 
         t_epoch_end = time.time()
         print(f"Epoch {epoch}, reward max mean = {tracker.rewards_max_mean[-1]:.5f}, time per epoch {(t_epoch_end - t_epoch_start):.3f} s")
