@@ -17,7 +17,7 @@ sys.path.append('../../')
 from utils import Timer
 from oracle import Oracle
 from .rl_tools import PerformanceEnv, NormalizeWrapper, TrajectoryNormalizeWrapper, EnvRunner, EnvRunnerMemory, TrajectorySampler_v1_1
-from .rl_tools import MLPSepDelayStep, MLPSepDelaySepStep, MLPSepDelaySepStepStepID, MLPConditionalStep, PolicyActor, Policy_v1_3
+from .rl_tools import MLPSepDelayStep, MLPSepDelaySepStep, MLPSepDelaySepStepStepID, MLPConditionalStep, LSTMSepHead, PolicyActor, Policy_v1_3, PolicyMemory
 from .rl_tools import AccumReturn, AsArray, NormalizeReturns, TrainingTracker
 from .rl_tools import PolicyGradient
 
@@ -135,17 +135,23 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
     #                         hidden_delay_ind_size, hidden_delay_ind_num,
     #                         hidden_delay_step_size, hidden_delay_step_num,
     #                         model.device)
-    agent = MLPSepDelaySepStepStepID(state_dim, delays2change_num, delays_steps_num,
-                            num_runner_steps, stepid_embed_size,
-                            hidden_delay_ind_size, hidden_delay_ind_num,
-                            hidden_delay_step_size, hidden_delay_step_num,
-                            model.device)
+    # agent = MLPSepDelaySepStepStepID(state_dim, delays2change_num, delays_steps_num,
+    #                         num_runner_steps, stepid_embed_size,
+    #                         hidden_delay_ind_size, hidden_delay_ind_num,
+    #                         hidden_delay_step_size, hidden_delay_step_num,
+    #                         model.device)
+    agent = LSTMSepHead(state_dim, delays2change_num, delays_steps_num,
+                        num_runner_steps, stepid_embed_size, mem_len,
+                        hidden_delay_ind_size, hidden_delay_ind_num,
+                        hidden_delay_step_size, hidden_delay_step_num,
+                        model.device)
     agent.count_parameters()
     # agent.enumerate_parameters()
 
     # Policy: different returns for trajectory sampling and agent training
-    policy = PolicyActor(agent)
+    # policy = PolicyActor(agent)
     # policy = Policy_v1_3(agent)
+    policy = PolicyMemory(agent)
 
     def make_ppo_runner(env, policy, num_runner_steps=2048, gamma=0.99, 
                         num_epochs=10, num_minibatches=32):

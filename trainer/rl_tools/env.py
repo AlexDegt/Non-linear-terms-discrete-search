@@ -427,7 +427,7 @@ class EnvRunnerMemory:
             time_steps.append(i)
             norm_param = max(max(abs(self.env.state_space.high)), max(abs(self.env.state_space.low)))
             inputs = {"state": observations[-self.mem_len:] / norm_param,
-                      "time": [time_steps[-1]]}
+                      "time": [time_steps[-self.mem_len:]]}
             # with torch.no_grad():
             #     act = self.policy.act(inputs)
             act = self.policy.act(inputs)

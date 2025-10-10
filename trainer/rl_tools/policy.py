@@ -617,7 +617,7 @@ class LSTMSepHead(nn.Module):
         Input is always (channels, length) without batch dimension.
     """
     def __init__(self, state_dim, delays2change_num, delays_steps_num,
-                 trajectory_len, stepid_embed_size,
+                 trajectory_len, stepid_embed_size, mem_len,
                  hidden_delay_ind_size=128, hidden_delay_ind_num=2,
                  hidden_delay_step_size=128, hidden_delay_step_num=2,
                  device='cuda'):
@@ -626,51 +626,69 @@ class LSTMSepHead(nn.Module):
         self.state_dim = state_dim
         self.delays2change_num = delays2change_num
         self.delays_steps_num = delays_steps_num
+        self.mem_len = mem_len
 
         # self.act = torch.nn.Tanh()
-        self.act = torch.nn.SiLU()
+        # self.act = torch.nn.SiLU()
 
         self.stepid_embed = torch.nn.Embedding(trajectory_len, stepid_embed_size, device=device)
 
-        # Delay indices part
+        # Delay indices part (LSTM-based)
         self.delay_range = nn.ModuleList()
         self.delay_range_ln = nn.ModuleList()
-        for j_ind in range(delays2change_num):
-            hidden = nn.ModuleList()
+        for _ in range(delays2change_num):
+            lstm_layers = nn.ModuleList()
             norms = nn.ModuleList()
             for j in range(hidden_delay_ind_num):
-                in_ch = state_dim + stepid_embed_size if j == 0 else hidden_delay_ind_size
-                out_ch = state_dim if j == hidden_delay_ind_num - 1 else hidden_delay_ind_size
-                hidden.append(nn.Linear(in_ch, out_ch, device=device))
+                input_size = state_dim + stepid_embed_size if j == 0 else hidden_delay_ind_size
+                hidden_size = state_dim if j == hidden_delay_ind_num - 1 else hidden_delay_ind_size
+                lstm = nn.LSTM(input_size, hidden_size, batch_first=True, device=device)
+                lstm_layers.append(lstm)
                 if j != hidden_delay_ind_num - 1:
-                    norms.append(nn.LayerNorm(out_ch, elementwise_affine=True, device=device))
-            self.delay_range.append(hidden)
+                    norms.append(nn.LayerNorm(hidden_size, elementwise_affine=True, device=device))
+            self.delay_range.append(lstm_layers)
             self.delay_range_ln.append(norms)
 
-        # Delay steps part
+        # Delay steps part (LSTM-based)
         self.delay_steps = nn.ModuleList()
         self.delay_steps_ln = nn.ModuleList()
-        for j_step in range(delays2change_num):
-            hidden = nn.ModuleList()
+        for _ in range(delays2change_num):
+            lstm_layers = nn.ModuleList()
             norms = nn.ModuleList()
             for j in range(hidden_delay_step_num):
-                in_ch = state_dim + stepid_embed_size if j == 0 else hidden_delay_step_size
-                out_ch = delays_steps_num if j == hidden_delay_step_num - 1 else hidden_delay_step_size
-                hidden.append(nn.Linear(in_ch, out_ch, device=device))
+                input_size = state_dim + stepid_embed_size if j == 0 else hidden_delay_step_size
+                hidden_size = delays_steps_num if j == hidden_delay_step_num - 1 else hidden_delay_step_size
+                lstm = nn.LSTM(input_size, hidden_size, batch_first=True, device=device)
+                lstm_layers.append(lstm)
                 if j != hidden_delay_step_num - 1:
-                    norms.append(nn.LayerNorm(out_ch, elementwise_affine=True, device=device))
-            self.delay_steps.append(hidden)
+                    norms.append(nn.LayerNorm(hidden_size, elementwise_affine=True, device=device))
+            self.delay_steps.append(lstm_layers)
             self.delay_steps_ln.append(norms)
 
         self.policy_out = [self.delay_range, self.delay_steps]
 
+
     def forward(self, x):
-        # t_step: (1, length)
+        # t_step: (batch_size, length, 1)
+        print(x["time"].shape)
+        print(x["state"].shape)
+        sys.exit()
         t_step = torch.permute(x["time"], (1, 0)).to(torch.int32)
-        # x: (length, channels)
+        # x: (batch_size, length, channels)
         x = x["state"]
         x = torch.cat((x, self.stepid_embed(t_step).squeeze(1)), dim=-1)
         policy = []
+
+        # пример прохода для delay_range
+        # outs = []
+        # for i, lstm_layers in enumerate(self.delay_range):
+        #     out = x
+        #     for j, lstm in enumerate(lstm_layers):
+        #         out, _ = lstm(out)
+        #         if j < len(self.delay_range_ln[i]):
+        #             out = self.delay_range_ln[i][j](out)
+        #     outs.append(out)
+
         # delay_range
         for branch, norms in zip(self.delay_range, self.delay_range_ln):
             x_policy = x.clone()
@@ -1013,6 +1031,52 @@ class Policy_v1_3:
 
         actions = actions[:, 0, :].detach().cpu().numpy().tolist()
         log_probs = log_probs[:, 0, :].detach().cpu().numpy().tolist()
+
+        if not training:
+            return {'actions': actions, 
+                    'log_probs': log_probs}
+        else:
+            return {'distribution': distr}
+
+class PolicyMemory:
+    def __init__(self, agent):
+        self.agent = agent
+    
+    def reset(self):
+        pass
+
+    def act(self, inputs, training=False):
+        for key, val in inputs.items():
+            val = torch.tensor(val)
+            if val.ndim == 2:
+                val = val.unsqueeze(1).unsqueeze(1)
+            print(key, val.ndim)
+            # else:
+            #     raise ValueError(f"Current RL implementation implies unbatched states. Current state includes {inputs.ndim} dimensions.")
+            val = val.to(self.agent.device).to(torch.float32)
+            inputs[key] = val
+
+        policy = self.agent(inputs)
+
+        indices = policy[:int(len(policy) // 2)]
+        steps = policy[int(len(policy) // 2):]
+
+        actions, distr, log_probs = [], [], []
+        for j in range(int(len(policy) // 2)):
+            distr.append([indices[j], steps[j]])
+            indices_ind_j, steps_ind_j = indices[j].sample(), steps[j].sample()
+            # steps_j = steps_ind_j - delta_step
+            action = torch.cat([indices_ind_j[:, None], steps_ind_j[:, None]], dim=-1)
+            log_prob_ind = distr[-1][0].log_prob(indices_ind_j)
+            log_prob_step = distr[-1][1].log_prob(steps_ind_j)
+            log_prob = torch.cat([log_prob_ind[:, None], log_prob_step[:, None]], dim=-1)
+            actions.append(action.detach().cpu().numpy().tolist())
+            log_probs.append(log_prob.detach().cpu().numpy().tolist())
+
+        actions = np.array(actions)[:, 0, :].tolist()
+        # print(f"In policy: {actions}")
+        # sys.exit()
+        log_probs = np.array(log_probs)[:, 0, :].tolist()
 
         if not training:
             return {'actions': actions, 
