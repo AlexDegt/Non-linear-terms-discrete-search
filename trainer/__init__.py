@@ -1,5 +1,6 @@
 from .ls import train_ls
 from .ols import train_ols
+from .ols_classic import train_ols_classic
 from .ppo import train_ppo
 from .pg import train_pg
 from .rl_tools import PerformanceEnv, NormalizeWrapper, TrajectoryNormalizeWrapper, \

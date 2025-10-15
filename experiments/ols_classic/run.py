@@ -7,7 +7,7 @@ import torch
 import random
 import numpy as np
 from oracle import count_parameters
-from trainer import train_ols
+from trainer import train_ols_classic
 from utils import dataset_prepare
 from scipy.io import loadmat
 from model import ParallelCheby2D
@@ -63,7 +63,7 @@ dtype = getattr(torch, config["dtype"])
 # Elements of train_slots_ind, test_slots_ind must be higher than 0 and lower, than slot_num
 # In full-batch mode train, validation and test dataset are the same.
 # In mini-batch mode validation and test dataset are the same.
-train_slots_ind, validat_slots_ind, test_slots_ind = range(1), range(1), range(1)
+train_slots_ind, validat_slots_ind, test_slots_ind = range(1), range(1, 2), range(1, 2)
 delay_d = 0
 
 # Size of blocks to divide whole signal into
@@ -158,6 +158,6 @@ print(f"Current model parameters number is {count_parameters(model)}")
 # params = [(name, p.size(), p.dtype) for name, p in model.named_parameters()]
 # print(params)
 
-best_delays = train_ols(model, train_dataset, train_dataset, train_dataset, loss, quality_criterion, config, batch_to_tensors,
+best_delays = train_ols_classic(model, train_dataset, train_dataset, train_dataset, loss, quality_criterion, config, batch_to_tensors,
                                         tensors_to_batch, chunk_num=chunk_num, save_path=save_path, exp_name=exp_name,
                                         weight_names=weight_names, delays_range=delays_range, iter_num=iter_num)

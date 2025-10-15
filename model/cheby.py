@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import sys
 
+from copy import deepcopy
+
 from .layers import Cheby2D, Delay
 
 def tensor_memory_in_gb(tensor):
@@ -80,7 +82,13 @@ class ParallelCheby2D(nn.Module):
         delays_output = [delays_branch[:1] for delays_branch in delays]
         self.delay_inp = Delay(delays_input, self.dtype, self.device)
         self.delay_out = Delay(delays_output, self.dtype, self.device)
-        self.delays = delays
+        self.delays = deepcopy(delays)
         self.cells = nn.ModuleList()
         for i in range(len(delays)):
             self.cells.append(Cheby2D(self.order, self.dtype, self.device))
+
+    def count_parameters(self, trainable=False):
+        if trainable:
+            return sum([p.numel() for p in self.parameters() if p.requires_grad == True])
+        else:
+            return sum([p.numel() for p in self.parameters()])

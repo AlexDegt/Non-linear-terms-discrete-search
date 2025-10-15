@@ -6,7 +6,6 @@ trial_descript: Training of 1D Chebyshev polynomial-based model
 # trial_name: range_m15_15_s3_nl_3x3_branch_10
 # trial_name: range_m2_2_s1_nl_6x6_branch_1
 # trial_name: range_m7_7_s1_nl_6x6_branch_10
-# trial_name: range_m6_6_s1_nl_6x6_branch_4
 trial_name: range_m2_2_s1_nl_6x6_branch_5
 # trial_name: range_m6_6_s3
 
