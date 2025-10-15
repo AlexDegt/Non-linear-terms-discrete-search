@@ -61,7 +61,7 @@ dtype = getattr(torch, config["dtype"])
 # Elements of train_slots_ind, test_slots_ind must be higher than 0 and lower, than slot_num
 # In full-batch mode train, validation and test dataset are the same.
 # In mini-batch mode validation and test dataset are the same.
-train_slots_ind, validat_slots_ind, test_slots_ind = range(1), range(1, 2), range(1, 2)
+train_slots_ind, validat_slots_ind, test_slots_ind = range(1), range(1), range(1)
 delay_d = 0
 
 # Size of blocks to divide whole signal into
@@ -70,6 +70,8 @@ block_size = config["block_size"]
 alpha = 0.0
 # Configuration file
 config_train = None
+# Flag, which shows whether to return reference signal or not
+return_ref = True
 # Input signal is padded with pad_zeros zeros at the beginning and ending of input signal.
 # Since each 1d convolution in model CVCNN makes zero-padding with int(kernel_size/2) left and right, then 
 # NO additional padding in the input batches is required.
@@ -77,8 +79,8 @@ trans_len = max([abs(item) for sublist in delays for item in sublist])
 pad_zeros = trans_len
 # Channel to compensate: A or B
 channel = config["channel"]
-dataset = dataset_prepare(data_path, dtype, device, batch_size, block_size, slot_num, pad_zeros, 
-                    delay_d, train_slots_ind, validat_slots_ind, test_slots_ind, channel=channel) 
+dataset, ref_signal = dataset_prepare(data_path, dtype, device, batch_size, block_size, slot_num, pad_zeros, 
+                    delay_d, train_slots_ind, validat_slots_ind, test_slots_ind, channel=channel, return_ref=return_ref) 
 
 train_dataset, validate_dataset, test_dataset = dataset
 
@@ -114,11 +116,13 @@ def loss(model, signal_batch):
 def quality_criterion(model, dataset):
     targ_pow, loss_val = 0, 0
     for batch in dataset:
-        _, d= batch_to_tensors(batch)
+        # _, d= batch_to_tensors(batch)
         # targ_pow += d.abs().square().sum()
-        targ_pow += d[..., trans_len if trans_len > 0 else None: -pad_zeros if pad_zeros > 0 else None].abs().square().sum()
+        # targ_pow += d[..., trans_len if trans_len > 0 else None: -pad_zeros if pad_zeros > 0 else None].abs().square().sum()
+        input_pow = np.sum(np.abs(ref_signal) ** 2)
         loss_val += loss(model, batch)
-    return 10.0 * torch.log10((loss_val) / (targ_pow)).item()
+    # return 10.0 * torch.log10((loss_val) / (targ_pow)).item()
+    return 10.0 * torch.log10((loss_val) / (input_pow)).item()
 
 def load_weights(path_name, device=device):
     return torch.load(path_name, map_location=torch.device(device))

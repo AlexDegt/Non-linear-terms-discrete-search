@@ -41,7 +41,7 @@ class ResampleDataset(torch.utils.data.Dataset):
 def dataset_prepare(data_path: str, dtype: torch.dtype = torch.complex128, device: str = 'cuda', batch_size: OptionalInt = None, 
                     block_size: OptionalInt = None, slot_num: OptionalInt = None, pad_zeros: OptionalInt = None, 
                     delay_d: OptionalInt = None, train_slots_ind: range = range(1), validat_slots_ind: range = range(1),
-                    test_slots_ind: range = range(1), channel: str = 'A') -> DatasetType:
+                    test_slots_ind: range = range(1), channel: str = 'A', return_ref: bool = False) -> DatasetType:
     """
     The method extracts input and target data for the mat file, normalizes and resamples if necessary.
     Then it divides input and target tensors into the batches and loads them into the dataloader.
@@ -64,6 +64,7 @@ def dataset_prepare(data_path: str, dtype: torch.dtype = torch.complex128, devic
             A range with step 1. Defaults is range(1).
         test_slots_ind (range): Indices of the slots which are chosen for training dataset. A range with step 1. Defaults is range(1).
         channel (str): Channel to compensate non-linear distortion. Defaults to 'A'.
+        return_ref (bool): Flag, which shows whether to return reference signal or not.
 
     Returns:
         Tuple of iterables.
@@ -77,10 +78,15 @@ def dataset_prepare(data_path: str, dtype: torch.dtype = torch.complex128, devic
 
     mat = loadmat(data_path)
 
-    input_a = mat['PDinA'][0, :]
-    input_b = mat['PDinB'][0, :]
-    target_a = mat['PDoutA'][0, :] - mat['PDinA'][0, :]
-    target_b = mat['PDoutB'][0, :] - mat['PDinB'][0, :]
+    input_ref = mat['PDinB'][0, :].copy()
+    input_ref = input_ref[:len(input_ref) // 2] / (2 ** 15)
+    input_a = mat['PDinA'][0, :] / (2 ** 15)
+    input_b = mat['PDinB'][0, :] / (2 ** 15)
+    pa_out_a = mat['PDoutA'][0, :] / (2 ** 15)
+    pa_out_b = mat['PDoutB'][0, :] / (2 ** 15)
+
+    target_a = pa_out_a - input_a
+    target_b = pa_out_b - input_b
     nf = np.zeros_like(target_a)
 
     if delay_d is not None and delay_d != 0:
@@ -104,7 +110,9 @@ def dataset_prepare(data_path: str, dtype: torch.dtype = torch.complex128, devic
     nf = torch.tensor(nf, dtype=dtype).view(1, 1, -1).to(device)
 
     input /= input.abs().max()
-    target /= target.abs().max()
+    # print(target.size())
+    # print(target.abs().square().sum().item())
+    # target /= target.abs().max()
 
     assert (np.array(train_slots_ind) < slot_num).all() and (np.array(train_slots_ind) >= 0).all(), \
         "All train slots indices (argument train_slots_ind) must be positive and lower, than number of slots (argument slot_num)."
@@ -169,4 +177,8 @@ def dataset_prepare(data_path: str, dtype: torch.dtype = torch.complex128, devic
     test_set = torch.utils.data.DataLoader(test_set, batch_size=None)
     
     dataset.append(tuple((train_set, validat_set, test_set)))
-    return dataset[0]
+
+    if return_ref:
+        return dataset[0], input_ref
+    else:
+        return dataset[0]

@@ -7,7 +7,6 @@ import torch
 import random
 import numpy as np
 from oracle import count_parameters
-from trainer import train
 from utils import dataset_prepare
 from scipy.io import loadmat
 from scipy.signal import get_window, welch
@@ -66,7 +65,7 @@ dtype = torch.complex128
 # Elements of train_slots_ind, test_slots_ind must be higher than 0 and lower, than slot_num
 # In full-batch mode train, validation and test dataset are the same.
 # In mini-batch mode validation and test dataset are the same.
-train_slots_ind, validat_slots_ind, test_slots_ind = range(1), range(1, 2), range(1, 2)
+train_slots_ind, validat_slots_ind, test_slots_ind = range(1), range(1), range(1)
 delay_d = 0
 
 # Size of blocks to divide whole signal into
@@ -75,15 +74,17 @@ block_size = config["block_size"]
 alpha = 0.0
 # Configuration file
 config_train = None
+# Flag, which shows whether to return reference signal or not
+return_ref = True
 # Input signal is padded with pad_zeros zeros at the beginning and ending of input signal.
 # Since each 1d convolution in model CVCNN makes zero-padding with int(kernel_size/2) left and right, then 
 # NO additional padding in the input batches is required.
-trans_len = int(len(delays) // 2)
+trans_len = max([abs(item) for sublist in delays for item in sublist])
 pad_zeros = trans_len
 # Channel to compensate: A or B
 channel = config["channel"]
-dataset = dataset_prepare(data_path, dtype, device, batch_size, block_size, slot_num, pad_zeros, 
-                    delay_d, train_slots_ind, validat_slots_ind, test_slots_ind, channel=channel)
+dataset, ref_signal = dataset_prepare(data_path, dtype, device, batch_size, block_size, slot_num, pad_zeros, 
+                    delay_d, train_slots_ind, validat_slots_ind, test_slots_ind, channel=channel, return_ref=return_ref) 
 
 train_dataset, validate_dataset, test_dataset = dataset
 
@@ -104,8 +105,7 @@ def batch_to_tensors(a):
     return x, d
 
 def complex_mse_loss(d, y, model):
-    # d = d[..., trans_len if trans_len > 0 else None: -trans_len if trans_len > 0 else None]
-    error = (d - y)
+    error = (d - y)#[..., trans_len if trans_len > 0 else None: -trans_len if trans_len > 0 else None]
     return error.abs().square().sum() #+ alpha * sum(torch.norm(p)**2 for p in model.parameters())
 
 def loss(model, signal_batch):
@@ -117,10 +117,13 @@ def loss(model, signal_batch):
 def nmse_fn(model, dataset):
     targ_pow, loss_val = 0, 0
     for batch in dataset:
-        _, d = batch_to_tensors(batch)
-        targ_pow += d.abs().square().sum()
+        # _, d= batch_to_tensors(batch)
+        # targ_pow += d.abs().square().sum()
+        # targ_pow += d[..., trans_len if trans_len > 0 else None: -pad_zeros if pad_zeros > 0 else None].abs().square().sum()
+        input_pow = np.sum(np.abs(ref_signal) ** 2)
         loss_val += loss(model, batch)
-    return 10.0 * torch.log10((loss_val) / (targ_pow)).item()
+    # return 10.0 * torch.log10((loss_val) / (targ_pow)).item()
+    return 10.0 * torch.log10((loss_val) / (input_pow)).item()
 
 def aclr_fn_torch(sig, f, fs=1.0, nfft=1024, window='blackman', nperseg=None, noverlap=None):
     """
@@ -175,7 +178,7 @@ def aclr_fn_torch(sig, f, fs=1.0, nfft=1024, window='blackman', nperseg=None, no
     return aclr.item()  # Return as a scalar
 
 def load_weights(path_name, device=device):
-    return torch.load(path_name, map_location=torch.device(device))
+    return torch.load(path_name, map_location=torch.device(device), weights_only=True)
 
 def set_weights(model, weights):
     model.load_state_dict(weights)
@@ -187,7 +190,7 @@ def get_nested_attr(module, names):
             return
     return module
 
-model = ParallelCheby2D(order, delays, channel, dtype, device)
+model = ParallelCheby2D(order, delays, channel, dtype, device, trans_len)
 
 model.to(device)
 
@@ -213,16 +216,22 @@ with torch.no_grad():
         for j, batch in enumerate(dataset):
             data = batch_to_tensors(batch)
 
+            if channel == 'A':
+                channel_ind = 0
+            elif channel == 'B':
+                channel_ind = 1
+
             y.append(model(data[0])[0, 0, :])#[..., trans_len if trans_len > 0 else None: -trans_len if trans_len > 0 else None])
             d.append(data[1][0, 0, :])#[..., trans_len if trans_len > 0 else None: -trans_len if trans_len > 0 else None])
-            x.append(data[0][0, 0, trans_len if trans_len > 0 else None: -trans_len if trans_len > 0 else None])
+            x.append(data[0][0, channel_ind, trans_len if trans_len > 0 else None: -trans_len if trans_len > 0 else None])
 
         y_full_tensor = torch.cat(y, dim=-1).to(device)
         d_full_tensor = torch.cat(d, dim=-1).to(device)
         x_full_tensor = torch.cat(x, dim=-1).to(device)
-        y_full_numpy = y_full_tensor.detach().cpu().numpy()
-        d_full_numpy = d_full_tensor.detach().cpu().numpy()
-        x_full_numpy = x_full_tensor.detach().cpu().numpy()
+        y_full_numpy = y_full_tensor.detach().cpu().numpy() * 2 ** 15
+        d_full_numpy = d_full_tensor.detach().cpu().numpy() * 2 ** 15
+        x_full_numpy = x_full_tensor.detach().cpu().numpy() * 2 ** 15
+        # print(sum(abs(d_full_numpy)))
 
         aclr_val = aclr_fn_torch((x_full_tensor + d_full_tensor - y_full_tensor)[trans_len:-trans_len], f=f, fs=fs, nfft=nfft)
         aclr_val_dpdoff = aclr_fn_torch((x_full_tensor + d_full_tensor)[trans_len:-trans_len], f=f, fs=fs, nfft=nfft)

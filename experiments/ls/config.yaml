@@ -3,7 +3,8 @@ trial_descript: Training of 1D Chebyshev polynomial-based model
 # If trial_name == 'None', then name to the experiment is given automatically,
 # otherwise it is set name set by user 
 # trial_name: ls_zero_delays
-trial_name: ls_m1_0_1_delays
+# trial_name: ls_m1_0_1_delays
+trial_name: ls_m1_0_1_and_0_m1_m1_delays
 
 # trial_name: sgd_full_grad_adam_10k_epochs_4_pow_dim_mu_1e_3_stand_tx
 # trial_name: test
@@ -13,7 +14,8 @@ param_num: [6, 6]
 # Model is parallel Chebyshev polynomials, summed at the output
 # Each polynomail is fed by the signals x_n, delayd by delay
 # delays: [[-1, -1, -1], [-2, -2, -2], [-3, -3, -3], [0, 0, 0], [1, 1, 1], [2, 2, 2], [3, 3, 3]]
-delays: [[-1, 0, 1]]
+# delays: [[-1, 0, 1]]
+delays: [[-1, 0, 1], [0, -1, -1]]
 batch_size: 1
 # Whole signal length 213504, half 106752
 block_size: 106752

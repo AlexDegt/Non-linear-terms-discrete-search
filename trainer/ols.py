@@ -4,6 +4,7 @@ from typing import Tuple, Union, Callable, List
 import numpy as np
 
 import itertools
+from itertools import product
 
 from .ls import train_ls
 
@@ -74,10 +75,13 @@ def train_ols(model: nn.Module, train_dataset: DataLoaderType, validate_dataset:
     if delays_range is None:
         delays_range = [-15, 15, 3]
 
-    comb_delays = list(itertools.combinations_with_replacement(np.arange(*delays_range), 3))
+    comb_delays = list(product(*[set(np.arange(*delays_range)) for _ in range(3)]))
+    # comb_delays = list(itertools.combinations_with_replacement(np.arange(*delays_range), 3))
     
     # Save all delays combinations
     np.save(os.path.join(save_path, "comb_delays.npy"), np.array(comb_delays))
+    # print(len(comb_delays))
+    # sys.exit()
 
     best_inds, best_delays = [], []
     # Initial terms matrix

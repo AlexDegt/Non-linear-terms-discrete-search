@@ -4,6 +4,8 @@ trial_descript: Training of 1D Chebyshev polynomial-based model
 # otherwise it is set name set by user 
 # trial_name: ls_zero_delays
 trial_name: ls_m1_0_1_delays
+# trial_name: ls_m1_0_1_and_0_0_9_delays
+# trial_name: ls_m1_0_1_and_0_m1_m1_delays
 
 # trial_name: sgd_full_grad_adam_10k_epochs_4_pow_dim_mu_1e_3_stand_tx
 # trial_name: test
@@ -14,6 +16,7 @@ param_num: [6, 6]
 # Each polynomail is fed by the signals x_n, delayd by delay
 # delays: [[-1, -1, -1], [-2, -2, -2], [-3, -3, -3], [0, 0, 0], [1, 1, 1], [2, 2, 2], [3, 3, 3]]
 delays: [[-1, 0, 1]]
+# delays: [[-1, 0, 1], [0, -1, -1]]
 batch_size: 1
 # Whole signal length 213504, half 106752
 block_size: 106752
@@ -23,8 +26,8 @@ block_size: 106752
 # Increase this parameter if you obtain out of memory error.
 chunk_num: 1
 dtype: complex128
-# device: "cuda:1"
-device: "cpu"
+device: "cuda:1"
+# device: "cpu"
 # dtype: complex64
 # Path to the folder with data
 data_path: '../../data/data2d.mat'

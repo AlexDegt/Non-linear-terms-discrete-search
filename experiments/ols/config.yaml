@@ -5,7 +5,8 @@ trial_descript: Training of 1D Chebyshev polynomial-based model
 # trial_name: range_m15_15_s1
 # trial_name: range_m15_15_s3_nl_3x3_branch_10
 # trial_name: range_m2_2_s1_nl_6x6_branch_1
-trial_name: range_m7_7_s1_nl_6x6_branch_10
+# trial_name: range_m7_7_s1_nl_6x6_branch_10
+trial_name: range_m6_6_s1_nl_6x6_branch_4
 # trial_name: range_m6_6_s3
 
 # trial_name: sgd_full_grad_adam_10k_epochs_4_pow_dim_mu_1e_3_stand_tx
@@ -15,9 +16,9 @@ trial_name: range_m7_7_s1_nl_6x6_branch_10
 param_num: [6, 6]
 # Specifies range of possible delays to be chosen for the input signal.
 # List includes [first, last, step] possible delays
-delays_range: [-7, 7, 1]
+delays_range: [-6, 6, 1]
 # Number of OLS iterations. Each new iteration corresponds to 1 new model branch.
-iter_num: 1
+iter_num: 4
 batch_size: 1
 # Whole signal length 213504, half 106752
 block_size: 106752
