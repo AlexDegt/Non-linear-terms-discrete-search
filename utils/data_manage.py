@@ -78,12 +78,23 @@ def dataset_prepare(data_path: str, dtype: torch.dtype = torch.complex128, devic
 
     mat = loadmat(data_path)
 
+    # input_a = mat['PDinA'][0, :] / (2 ** 15)
+    # input_b = mat['PDinB'][0, :] / (2 ** 15)
+    # pa_out_a = mat['PDoutA'][0, :] / (2 ** 15)
+    # pa_out_b = mat['PDoutB'][0, :] / (2 ** 15)
+
+    # # input_ref = mat['PDinB'][0, :].copy()
+    # input_ref = mat['PDinB'][0, :].copy()
+    # input_ref = input_ref[:len(input_ref) // 2] / (2 ** 15)
+
+    input_a = mat['PDinA'][0, :]# / (2 ** 15)
+    input_b = mat['PDinB'][0, :]# / (2 ** 15)
+    pa_out_a = mat['PDoutA'][0, :]# / (2 ** 15)
+    pa_out_b = mat['PDoutB'][0, :]# / (2 ** 15)
+
+    # input_ref = mat['PDinB'][0, :].copy()
     input_ref = mat['PDinB'][0, :].copy()
-    input_ref = input_ref[:len(input_ref) // 2] / (2 ** 15)
-    input_a = mat['PDinA'][0, :] / (2 ** 15)
-    input_b = mat['PDinB'][0, :] / (2 ** 15)
-    pa_out_a = mat['PDoutA'][0, :] / (2 ** 15)
-    pa_out_b = mat['PDoutB'][0, :] / (2 ** 15)
+    # input_ref = input_ref[:len(input_ref) // 2] / (2 ** 15)
 
     target_a = pa_out_a - input_a
     target_b = pa_out_b - input_b

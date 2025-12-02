@@ -29,7 +29,7 @@ batch_size = config["batch_size"]
 chunk_num = config["chunk_num"] # 31 * 18
 
 # The number of signal slots in dataset
-slot_num = 2
+slot_num = 1
 
 # For ACLR calculation
 f = 10 # MHz
@@ -68,7 +68,7 @@ dtype = torch.complex128
 # Elements of train_slots_ind, test_slots_ind must be higher than 0 and lower, than slot_num
 # In full-batch mode train, validation and test dataset are the same.
 # In mini-batch mode validation and test dataset are the same.
-train_slots_ind, validat_slots_ind, test_slots_ind = range(1), range(1, 2), range(1, 2)
+train_slots_ind, validat_slots_ind, test_slots_ind = range(1), range(1), range(1)
 delay_d = 0
 
 # Size of blocks to divide whole signal into
@@ -247,9 +247,9 @@ for i_model in range(len(delays)):
             y_full_tensor = torch.cat(y, dim=-1).to(device)
             d_full_tensor = torch.cat(d, dim=-1).to(device)
             x_full_tensor = torch.cat(x, dim=-1).to(device)
-            y_full_numpy = y_full_tensor.detach().cpu().numpy() * 2 ** 15
-            d_full_numpy = d_full_tensor.detach().cpu().numpy() * 2 ** 15
-            x_full_numpy = x_full_tensor.detach().cpu().numpy() * 2 ** 15
+            y_full_numpy = y_full_tensor.detach().cpu().numpy()# * 2 ** 15
+            d_full_numpy = d_full_tensor.detach().cpu().numpy()# * 2 ** 15
+            x_full_numpy = x_full_tensor.detach().cpu().numpy()# * 2 ** 15
 
             aclr_val = aclr_fn_torch((x_full_tensor + d_full_tensor - y_full_tensor)[trans_len:-trans_len], f=f, fs=fs, nfft=nfft)
             aclr_val_dpdoff = aclr_fn_torch((x_full_tensor + d_full_tensor)[trans_len:-trans_len], f=f, fs=fs, nfft=nfft)

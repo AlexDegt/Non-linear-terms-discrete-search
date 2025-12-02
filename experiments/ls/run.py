@@ -27,7 +27,7 @@ batch_size = config["batch_size"]
 chunk_num = config["chunk_num"]
 
 # The number of signal slots in dataset
-slot_num = 2
+slot_num = 1
 
 device = config["device"]
 seed = 964
@@ -75,6 +75,7 @@ return_ref = True
 # Input signal is padded with pad_zeros zeros at the beginning and ending of input signal.
 # Since each 1d convolution in model CVCNN makes zero-padding with int(kernel_size/2) left and right, then 
 # NO additional padding in the input batches is required.
+# trans_len = 0
 trans_len = max([abs(item) for sublist in delays for item in sublist])
 pad_zeros = trans_len
 # Channel to compensate: A or B
@@ -114,6 +115,7 @@ def loss(model, signal_batch):
 # def quality_criterion(loss_val):
 #     return loss_val
 def quality_criterion(model, dataset):
+    global ref_signal
     targ_pow, loss_val = 0, 0
     for batch in dataset:
         # _, d= batch_to_tensors(batch)

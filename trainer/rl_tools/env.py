@@ -209,6 +209,7 @@ class PerformanceEnv(gym.Env):
             if perform_db < self.best_perform:
                 self.best_perform = perform_db
                 self.best_delays = delays
+
         # print(self.state)
 
         return self.state, reward, terminated, truncated, {}
@@ -216,6 +217,7 @@ class PerformanceEnv(gym.Env):
     def step_ind_to_step(self, delay_step_ind):
         steps = np.arange(-self.__max_delay_step, self.__max_delay_step + 1, 1)
         steps = steps[steps != 0]
+        # return steps[delay_step_ind]
         if not isinstance(delay_step_ind, np.ma.MaskedArray):
             return steps[delay_step_ind]
         else:
@@ -370,7 +372,7 @@ class EnvRunner:
                                  f"but has keys {list(act.keys())}")
             for key, val in act.items():
                 trajectory[key].append(val)
-
+                
             obs, rew, terminated, truncated, _ = self.env.step(trajectory['actions'][-1])
 
             done = np.logical_or(terminated, truncated)
@@ -393,14 +395,13 @@ class EnvRunner:
 class EnvRunnerMemory:
     """ Reinforcement learning runner in an environment with given policy """
 
-    def __init__(self, env, policy, nsteps, mem_len, transforms=None, step_var=None):
+    def __init__(self, env, policy, nsteps, transforms=None, step_var=None):
         self.env = env
         self.policy = policy
         self.nsteps = nsteps
         self.transforms = transforms or []
         self.step_var = step_var if step_var is not None else 0
         self.state = {"latest_observation": self.env.reset()[0]}
-        self.mem_len = mem_len
 
     @property
     def nenvs(self):
@@ -413,51 +414,51 @@ class EnvRunnerMemory:
         tmp = self.state["latest_observation"]
         self.policy.reset()
 
-    def get_next(self):
-        """ Runs the agent in the environment.  """
-        trajectory = defaultdict(list, {"actions": []})
-        observations = []
-        rewards = []
-        resets = []
-        time_steps = []
-        self.state["env_steps"] = self.nsteps
+#     def get_next(self):
+#         """ Runs the agent in the environment.  """
+#         trajectory = defaultdict(list, {"actions": []})
+#         observations = []
+#         rewards = []
+#         resets = []
+#         time_steps = []
+#         self.state["env_steps"] = self.nsteps
 
-        for i in range(self.nsteps):
-            observations.append(deepcopy(self.state["latest_observation"]))
-            time_steps.append(i)
-            norm_param = max(max(abs(self.env.state_space.high)), max(abs(self.env.state_space.low)))
-            inputs = {"state": observations[-self.mem_len:] / norm_param,
-                      "time": [time_steps[-self.mem_len:]]}
-            # with torch.no_grad():
-            #     act = self.policy.act(inputs)
-            act = self.policy.act(inputs)
-            if "actions" not in act:
-                raise ValueError("result of policy.act must contain 'actions' "
-                                 f"but has keys {list(act.keys())}")
-            for key, val in act.items():
-                trajectory[key].append(val)
+#         for i in range(self.nsteps):
+#             observations.append(deepcopy(self.state["latest_observation"]))
+#             time_steps.append(i)
+#             norm_param = max(max(abs(self.env.state_space.high)), max(abs(self.env.state_space.low)))
+#             inputs = {"state": observations[-self.mem_len:] / norm_param,
+#                       "time": [time_steps[-self.mem_len:]]}
+#             # with torch.no_grad():
+#             #     act = self.policy.act(inputs)
+#             act = self.policy.act(inputs)
+#             if "actions" not in act:
+#                 raise ValueError("result of policy.act must contain 'actions' "
+#                                  f"but has keys {list(act.keys())}")
+#             for key, val in act.items():
+#                 trajectory[key].append(val)
 
-            obs, rew, terminated, truncated, _ = self.env.step(trajectory['actions'][-1])
+#             obs, rew, terminated, truncated, _ = self.env.step(trajectory['actions'][-1])
 
-            done = np.logical_or(terminated, truncated)
-            self.state["latest_observation"] = deepcopy(obs)
-            rewards.append(rew)
-            resets.append(done)
+#             done = np.logical_or(terminated, truncated)
+#             self.state["latest_observation"] = deepcopy(obs)
+#             rewards.append(rew)
+#             resets.append(done)
 
-        print(np.array(observations).shape)
-        sys.exit()
+#         print(np.array(observations).shape)
+#         sys.exit()
 
-        trajectory.update(
-            observations=observations,
-            rewards=rewards,
-            resets=resets,
-            time_steps=time_steps)
-        trajectory["state"] = deepcopy(self.state)
+#         trajectory.update(
+#             observations=observations,
+#             rewards=rewards,
+#             resets=resets,
+#             time_steps=time_steps)
+#         trajectory["state"] = deepcopy(self.state)
 
-        for transform in self.transforms:
-            transform(trajectory)
+#         for transform in self.transforms:
+#             transform(trajectory)
         
-        return trajectory
+#         return trajectory
 
 class TrajectorySampler:
     """ Samples minibatches from trajectory for a number of epochs. """
@@ -589,10 +590,13 @@ class TrajectorySampler_v1_1:
             else:
                 self.trajectory['mask'] = np.zeros_like(self.trajectory['rewards'], dtype=int)
 
-
+            # print(self.trajectory['returns'])
             # Normalize returns in whole trajectory
             for transform in self.transforms:
                 transform(self.trajectory)         
+
+        # print(self.trajectory['returns'])
+        # sys.exit()
 
         minibatch = {}
         for key, value in self.trajectory.items():
@@ -602,6 +606,97 @@ class TrajectorySampler_v1_1:
         for key, value in self.trajectory.items():
             if key != 'state':
                 self.trajectory[key] = self.trajectory[key].reshape(-1, *self.trajectory[key].shape[2:])
+
+        self.minibatch_count += 1
+
+        if return_whole:
+            return minibatch, self.trajectory
+        else:
+            return minibatch
+
+class TrajectorySamplerMemory:
+    """ 
+        Samples minibatches from trajectory for a number of epochs.
+        Minibatches firslty formed as tensors of shape [N, B],
+        where N - number of trajectories in batch, B - length of batch of trajectory.
+    """
+    def __init__(self, runner, num_epochs, num_minibatches, traj_per_batch, transforms=None, mask_max=False):
+        self.runner = runner
+        self.num_epochs = num_epochs
+        self.num_minibatches = num_minibatches
+        self.traj_per_batch = traj_per_batch
+        self.transforms = transforms or []
+        self.minibatch_count = 0
+        self.epoch_count = 0
+        self.trajectory = None
+        self.trajectory_count = 0
+        self.mask_max = mask_max
+
+    def sample_trajs(self):
+        for j_traj in range(self.traj_per_batch):
+            self.runner.reset()
+            trajectory = self.runner.get_next()
+            if j_traj == 0:
+                trajectory_batch = deepcopy(trajectory)
+            else:
+                for key, val in trajectory_batch.items():
+                    if key != 'state' and key != 'latest_observation' and key != 'env_steps':
+                        if j_traj == 1:
+                            trajectory_batch[key] = trajectory_batch[key][None, :]
+                        trajectory_batch[key] = np.concatenate((trajectory_batch[key], trajectory[key][None, :]), axis=0)
+        return trajectory_batch
+
+    def get_next(self, return_whole=False):
+        """ Returns next minibatch.  """
+        if not self.trajectory or self.minibatch_count == self.num_minibatches:
+            self.minibatch_count = 0
+
+            self.trajectory = self.sample_trajs()
+
+            trajectory_len = self.trajectory["observations"].shape[1]
+
+            batch_size = trajectory_len // self.num_minibatches
+
+            # Mask all elements of trajectory after maximum return per each trajectory
+            if self.mask_max:
+                cols = np.arange(self.trajectory['returns'].shape[1])
+                mask = cols[None, :] > np.argmax(self.trajectory['rewards'], axis=1)[:, None]
+                mask_action = np.concatenate((mask[..., None, None], mask[..., None, None]), axis=-1)
+                mask_state = np.concatenate((mask[..., None], mask[..., None], mask[..., None]), axis=-1)
+                for key, val in self.trajectory.items():
+                    if key != 'state':
+                        if key == "actions" or key == "log_probs":
+                            self.trajectory[key] = np.ma.array(self.trajectory[key], mask=mask_action, dtype=self.trajectory[key].dtype)
+                        elif key == "observations":
+                            self.trajectory[key] = np.ma.array(self.trajectory[key], mask=mask_state, dtype=int)
+                        else:
+                            self.trajectory[key] = np.ma.array(self.trajectory[key], mask=mask, dtype=self.trajectory[key].dtype)
+                self.trajectory['mask'] = mask
+            else:
+                self.trajectory['mask'] = np.zeros_like(self.trajectory['rewards'], dtype=int)
+
+            # print(self.trajectory['returns'])
+            # Normalize returns in whole trajectory
+            for transform in self.transforms:
+                transform(self.trajectory)         
+
+        # for name, item in self.trajectory.items():
+        #     print((name, item.shape))
+        # # print(self.trajectory['returns'].shape)
+        # sys.exit()
+
+        minibatch = {}
+        for key, value in self.trajectory.items():
+            if key != 'state':
+                minibatch[key] = value[:, self.minibatch_count*batch_size: (self.minibatch_count + 1)*batch_size, ...]
+
+        # print(minibatch['actions'].shape)
+        # print(minibatch['observations'].shape)
+        # sys.exit()
+
+        # for key, value in self.trajectory.items():
+        #     if key != 'state':
+        #         self.trajectory[key] = self.trajectory[key].reshape(-1, *self.trajectory[key].shape[2:])
 
         self.minibatch_count += 1
 

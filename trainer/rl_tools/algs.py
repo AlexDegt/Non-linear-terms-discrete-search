@@ -182,19 +182,37 @@ class PolicyGradient:
             log_prob_ind = distr_ind.log_prob(actions[:, j_delay, 0])
             log_prob_step_ind = distr_step_ind.log_prob(actions[:, j_delay, 1])
             log_policy += log_prob_ind + log_prob_step_ind
-        log_policy /= (2 * delays2change_num)
+        # log_policy /= (2 * delays2change_num)
         # print(sum(~mask).item())
-        loss = -1 * (log_policy * returns * ((-1) * ~mask)).sum() / ((-1) * ~mask).sum()
+        # print(returns)
+        # print(returns * (~mask))
+        # print(log_policy)
+        # sys.exit()
+        # print((~mask).sum())
+        # print(((-1) * ~mask).sum())
+        # print((log_policy * returns * (~mask)).sum())
+        # print((log_policy * returns * ((-1) * ~mask)).sum())
+        # sys.exit()
+        loss = -1 * (log_policy * returns * (~mask)).sum() / (~mask).sum()
         self.policy_loss_list.append(loss.item())
         return loss
 
     def explore_loss(self, trajectory, act):
         """ Computes policy entropy on a given trajectory. """
         actions = torch.tensor(trajectory["actions"], device=self.policy.agent.device)
+        mask = torch.tensor(trajectory["mask"], device=self.policy.agent.device)
         policy = act['distribution']
-        entropy = 0
-        for distr_ind, distr_step_ind in policy:
-            entropy += distr_ind.entropy().mean() + distr_step_ind.entropy().mean()
+
+        delays2change_num = actions.shape[1]
+        log_policy = 0
+        for j_delay in range(delays2change_num):
+            distr_ind, distr_step_ind = policy[j_delay]
+            log_prob_ind = distr_ind.log_prob(actions[:, j_delay, 0])
+            log_prob_step_ind = distr_step_ind.log_prob(actions[:, j_delay, 1])
+            log_policy += log_prob_ind + log_prob_step_ind
+        entropy = -1 * (torch.exp(log_policy) * log_policy * (~mask)).sum() / (~mask).sum()
+        # log_policy /= (2 * delays2change_num)
+        # entropy += distr_ind.entropy().mean() + distr_step_ind.entropy().mean()
         self.explore_loss_list.append(entropy.item())
         return entropy
 

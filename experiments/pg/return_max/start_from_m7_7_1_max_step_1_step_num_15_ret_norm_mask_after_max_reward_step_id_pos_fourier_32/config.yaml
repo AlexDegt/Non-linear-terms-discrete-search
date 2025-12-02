@@ -1,0 +1,85 @@
+# Simulation description
+trial_descript: Training of 1D Chebyshev polynomial-based model
+# If trial_name == 'None', then name to the experiment is given automatically,
+# otherwise it is set name set by user 
+# trial_name: start_from_m7_7_1_max_step_1_step_num_30_ret_norm_mask_after_max_reward_step_id_200_entr_0
+# trial_name: start_from_m7_7_1_max_step_1_step_num_15_ret_norm_mask_after_max_reward_step_id_100_entr_0_002
+# trial_name: start_from_m7_7_1_max_step_1_step_num_30_ret_norm_mask_after_max_reward_step_id_300
+# trial_name: start_from_m7_7_1_max_step_1_step_num_15_ret_norm_mask_after_max_reward_step_id_number
+# trial_name: start_from_m7_7_1_max_step_1_step_num_30_ret_norm_mask_after_max_reward_step_id_number
+# trial_name: start_from_m7_7_1_max_step_1_step_num_15_ret_norm_mask_after_max_reward_step_id_pos_enc_50
+trial_name: start_from_m7_7_1_max_step_1_step_num_15_ret_norm_mask_after_max_reward_step_id_pos_fourier_32
+# trial_name: start_from_m7_7_1_max_step_1_step_num_15_ret_norm_mask_after_max_reward_step_id_pos_one_hot_15
+# trial_name: test
+
+add_folder: return_max
+
+# Simulation parameters
+# Chebyshev polynomal order
+param_num: [6, 6]
+# Number of OLS iterations. Each new iteration corresponds to 1 new model branch.
+iter_num: 10
+batch_size: 1
+# Whole signal length 213504, half 106752
+block_size: 106752 # 13344
+# chunk_num is important parameter, which allows to divide whole signal
+# into chunk_num blocks. LS method is implemented to accumulate 
+# hessian and gradient along the whole signal length and save GPU memory.
+# Increase this parameter if you obtain out of memory error.
+chunk_num: 1
+dtype: complex128
+device: "cuda:2"
+# dtype: complex64
+# Path to the folder with data
+data_path: '../../data/data2d.mat'
+# Channel to compensate: A or B
+channel: B
+# Allow to overwrite folder with saved results or not
+overwrite_file: True
+
+# Parameters of environment
+brunch_number: 1 # delays_number = brunch_number * 3 for 2D model
+delays_range: [-7, 7] # Range of delays search
+max_delay_step: 1 # Max step value per single agent move
+delays2change_num: 1 # Maximum number of delays to change per single agent move
+max_steps: 100000 # Maximum number of PPO steps
+# Normalization of state and reward parameters
+state_alpha: 0.0
+reward_alpha: 0.0
+# Initial delays
+start_mode: same
+init_delays: [[-7, 7, 1]]
+
+# Parameters of MLP agent
+hidden_delay_ind_size: 256
+hidden_delay_ind_num: 3
+hidden_delay_step_size: 256
+hidden_delay_step_num: 3
+stepid_embed_size: 32
+ind_choice_embed_size: 200
+hidden_shared_size: 256
+hidden_shared_num: 3
+# For RNN
+mem_len: 10
+# General training parameters
+num_runner_steps: 15 # Steps in trajectory
+traj_per_batch: 100 # Number of trajectories per batch
+# 'discount' - disount with gamma, 'terminal' - terminal return, 'max' - max(rewards) return 
+accum_return_mode: 'max'
+# All steps in trajectory after maximum reward-step are masked
+# Which means that they are not taken into account in training
+mask_max: True
+gamma: 0.1 # discount. Used only if accum_return_mode == 'discount'
+# gamma: 0.8 # discount
+num_minibatches: 1 # Number of mini-batches to divide whole trajectory into
+total_epoch_num: 2000 # Total number of epochs
+lr: 0.0003 # Adam learning rate
+eps: 0.00000001 # Adam epsilon
+
+# Log parameters
+log_every_epochs: 10
+log_trajs: [0, 100] # Range, must be 2 values
+
+# Policy Gradient training parameters
+explore_loss_coef: 0.01 # weight of explore loss
+max_grad_norm: 1000 # Maximum grad norm for clipping

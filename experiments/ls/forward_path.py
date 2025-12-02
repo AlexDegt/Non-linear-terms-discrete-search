@@ -28,7 +28,7 @@ batch_size = config["batch_size"]
 chunk_num = config["chunk_num"] # 31 * 18
 
 # The number of signal slots in dataset
-slot_num = 2
+slot_num = 1
 
 # For ACLR calculation
 f = 10 # MHz

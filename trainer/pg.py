@@ -16,8 +16,8 @@ sys.path.append('../../')
 
 from utils import Timer
 from oracle import Oracle
-from .rl_tools import PerformanceEnv, NormalizeWrapper, TrajectoryNormalizeWrapper, EnvRunner, EnvRunnerMemory, TrajectorySampler_v1_1
-from .rl_tools import MLPSepDelayStep, MLPSepDelaySepStep, MLPSepDelaySepStepStepID, MLPConditionalStep, LSTMSepHead, PolicyActor, Policy_v1_3, PolicyMemory
+from .rl_tools import PerformanceEnv, NormalizeWrapper, TrajectoryNormalizeWrapper, EnvRunner, EnvRunnerMemory, TrajectorySampler_v1_1, TrajectorySampler, TrajectorySamplerMemory
+from .rl_tools import MLPSepDelayStep, MLPSepDelaySepStep, MLPSepDelaySepStepStepID, MLPConditionalStep, LSTMShared, PolicyActor, Policy_v1_3, PolicyMemory
 from .rl_tools import AccumReturn, AsArray, NormalizeReturns, TrainingTracker
 from .rl_tools import PolicyGradient
 
@@ -128,7 +128,7 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
     ind_choice_embed_size = config["ind_choice_embed_size"]
     hidden_shared_size = config["hidden_shared_size"]
     hidden_shared_num = config["hidden_shared_num"]
-    mem_len = config["mem_len"]
+    hidden_size = config["hidden_size"]
     # agent = MLPConditionalStep(state_dim, delays2change_num, delays_steps_num,
     #                         num_runner_steps, stepid_embed_size, ind_choice_embed_size,
     #                         hidden_shared_size, hidden_shared_num,
@@ -140,11 +140,9 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
     #                         hidden_delay_ind_size, hidden_delay_ind_num,
     #                         hidden_delay_step_size, hidden_delay_step_num,
     #                         model.device)
-    agent = LSTMSepHead(state_dim, delays2change_num, delays_steps_num,
-                        num_runner_steps, stepid_embed_size, mem_len,
-                        hidden_delay_ind_size, hidden_delay_ind_num,
-                        hidden_delay_step_size, hidden_delay_step_num,
-                        model.device)
+    agent = LSTMShared(state_dim, delays2change_num, delays_steps_num,
+                       num_runner_steps, stepid_embed_size, hidden_size, 
+                       model.device)
     agent.count_parameters()
     # agent.enumerate_parameters()
 
@@ -157,12 +155,23 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
                         num_epochs=10, num_minibatches=32):
         """ Creates runner for PPO algorithm. """
         runner_transforms = [AsArray(), AccumReturn(policy, gamma=gamma, mode=accum_return_mode)]
-        runner = EnvRunnerMemory(env, policy, num_runner_steps, mem_len, transforms=runner_transforms)
-        # runner = EnvRunner(env, policy, num_runner_steps, transforms=runner_transforms)
+        # runner = EnvRunnerMemory(env, policy, num_runner_steps, transforms=runner_transforms)
+        # Use default EnvRunner for memory agent!
+        runner = EnvRunner(env, policy, num_runner_steps, transforms=runner_transforms)
 
         sampler_transforms = [NormalizeReturns()]
         # sampler_transforms = []
-        sampler = TrajectorySampler_v1_1(runner, num_epochs=num_epochs, 
+        # sampler = TrajectorySampler(runner, num_epochs=num_epochs, 
+        #                 num_minibatches=num_minibatches,
+        #                 traj_per_batch=traj_per_batch,
+        #                 transforms=sampler_transforms,
+        #                 mask_max=mask_max)
+        # sampler = TrajectorySampler_v1_1(runner, num_epochs=num_epochs, 
+        #                         num_minibatches=num_minibatches,
+        #                         traj_per_batch=traj_per_batch,
+        #                         transforms=sampler_transforms,
+        #                         mask_max=mask_max)
+        sampler = TrajectorySamplerMemory(runner, num_epochs=num_epochs, 
                                 num_minibatches=num_minibatches,
                                 traj_per_batch=traj_per_batch,
                                 transforms=sampler_transforms,
@@ -189,18 +198,21 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
 
     # Define statistics tracker
     alg_type = 'pg'
-    log_epochs = config["log_epochs"]
+    log_every_epochs = config["log_every_epochs"]
     log_trajs = config["log_trajs"]
-    tracker = TrainingTracker(env, pg, traj_per_batch, log_epochs, log_trajs, save_path, alg_type)
+    tracker = TrainingTracker(env, pg, traj_per_batch, log_every_epochs, log_trajs, save_path, alg_type)
     
     for epoch in range(epochs):
         t_epoch_start = time.time()
 
-        trajectory, _ = runner.get_next(return_whole=True)
+        minibatch, trajectory = runner.get_next(return_whole=True)
 
         tracker.save_oracle_buffer()
 
-        pg.step(trajectory)
+        pg.step(minibatch)
+
+        assert False, "Currently memory agent is under debug"
+
         sched.step()
         tracker.accum_stat(trajectory)
 

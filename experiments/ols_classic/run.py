@@ -29,7 +29,7 @@ batch_size = config["batch_size"]
 chunk_num = config["chunk_num"]
 
 # The number of signal slots in dataset
-slot_num = 2
+slot_num = 1
 
 device = config["device"]
 seed = 964
@@ -63,7 +63,7 @@ dtype = getattr(torch, config["dtype"])
 # Elements of train_slots_ind, test_slots_ind must be higher than 0 and lower, than slot_num
 # In full-batch mode train, validation and test dataset are the same.
 # In mini-batch mode validation and test dataset are the same.
-train_slots_ind, validat_slots_ind, test_slots_ind = range(1), range(1, 2), range(1, 2)
+train_slots_ind, validat_slots_ind, test_slots_ind = range(1), range(1), range(1)
 delay_d = 0
 
 # Size of blocks to divide whole signal into

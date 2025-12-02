@@ -1,0 +1,52 @@
+# Simulation description
+trial_descript: Training of 1D Chebyshev polynomial-based model
+# If trial_name == 'None', then name to the experiment is given automatically,
+# otherwise it is set name set by user 
+# trial_name: ls_zero_delays
+# trial_name: ls_m1_0_1_delays
+# trial_name: ls_1_0_1_delays
+# trial_name: ls_m1_0_1_and_0_m1_m1_delays
+# trial_name: ls_m1_0_m10_and_0_m1_m2_and_1_m1_m1_delays
+trial_name: ls_m1_0_m1_and_0_m1_m1_and_m3_m2_m1_delays
+
+# trial_name: sgd_full_grad_adam_10k_epochs_4_pow_dim_mu_1e_3_stand_tx
+# trial_name: test
+# Simulation parameters
+# Chebyshev polynomal order
+param_num: [6, 6]
+# Model is parallel Chebyshev polynomials, summed at the output
+# Each polynomail is fed by the signals x_n, delayd by delay
+# delays: [[-1, -1, -1], [-2, -2, -2], [-3, -3, -3], [0, 0, 0], [1, 1, 1], [2, 2, 2], [3, 3, 3]]
+# delays: [[-1, 0, 1]]
+# delays: [[-1, 0, 1], [0, -1, -1]]
+# delays: [[-1, 0, -10], [0, -1, -2], [1, -1, -1]]
+# delays: [[-1, 0, 1]]
+# delays: [[1, 0, 1]]
+delays: [[-1, 0, 1], [0, -1, -1], [-3, -2, -1]]
+batch_size: 1
+# Whole signal length 213504, half 106752
+block_size: 106752
+# chunk_num is important parameter, which allows to divide whole signal
+# into chunk_num blocks. LS method is implemented to accumulate 
+# hessian and gradient along the whole signal length and save GPU memory.
+# Increase this parameter if you obtain out of memory error.
+chunk_num: 1
+dtype: complex128
+device: "cuda:2"
+# device: "cpu"
+# dtype: complex64
+# Path to the folder with data
+data_path: '../../data/data2d.mat'
+# Channel to compensate: A or B
+channel: B
+# Allow to overwrite folder with saved results or not
+overwrite_file: True
+
+# Algorithm parameters 
+train_type: ls # LS-solution
+# train_type: ols # Orthogonal Least Squares
+# train_type: ppo # Proximal Policy Optimization
+epochs: 500 # Used in SGD and Mixed Newton
+lr: 0.0003 # Used only in SGD
+betas: [0.9, 0.9] # Used only in SGD
+accum_grad: False

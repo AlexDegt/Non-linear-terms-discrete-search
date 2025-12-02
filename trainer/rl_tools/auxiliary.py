@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import os, sys
 import pandas as pd
+from copy import deepcopy
 
 import warnings
 warnings.filterwarnings("ignore", message=".*converting a masked element to nan.*")
@@ -93,23 +94,19 @@ class NormalizeReturns:
     def __init__(self, beta=0.0):
         self.beta = beta
         self.baseline = 0
-    def __call__(self, trajectory, mask=None, eps=1e-3):
+    def __call__(self, trajectory, mask=None, eps=1e-5):
         # returns = np.asarray(trajectory["returns"]).flatten()
         # returns = np.asarray(trajectory["returns"])
         returns = trajectory["returns"].copy()
-        var = returns.var() # very bad
-        mean = returns.mean() # very bad
-        # mean = returns.mean(axis=1, keepdims=True)
-        # var = returns.var(axis=1, keepdims=True)
-        # print(f"Min(Var)_traj = {np.min(var)}")
-        # trajectory["returns"] = np.tanh((returns - mean) / np.sqrt(var + eps))
-        # trajectory["returns"] = np.clip((returns - mean) / np.sqrt(var + eps), -1, 1)
-        # trajectory["returns"] = returns
-        # trajectory["returns"] = returns - mean
+        var = returns[:, 0].var()
+        mean = returns[:, 0].mean()
+        # print(f"Mean ret = {mean:.3e}, var ret = {var:.3e}")
         ret = (returns - mean) / np.sqrt(var + eps)
+        # ret = returns - 14
         # print(max(ret))
         trajectory["returns"] = ret
         # trajectory["returns"] = (returns - mean) / np.sqrt(var + eps)
+        # pass
 
 class AsArray:
     """ 
@@ -127,10 +124,10 @@ class TrainingTracker:
         Object includes methods and attributes for agent training parameters tracking.
         Accumulates algorithm parameters during training.
 
-        log_epochs (list): epochs to log states and actions.
+        log_every_epochs (int): logs are saved every log_every_epochs epochs.
         log_trajs (list): trajectory indices range to log states and actions.
     """
-    def __init__(self, env, alg, traj_per_batch, log_epochs: list, log_trajs: list, save_path=None, alg_type='ppo'):
+    def __init__(self, env, alg, traj_per_batch, log_every_epochs: int, log_trajs: list, save_path=None, alg_type='ppo'):
         
         self.env = env
         self.alg = alg
@@ -138,13 +135,18 @@ class TrainingTracker:
         self.save_path = save_path
         self.traj_per_batch = traj_per_batch
 
-        self.log_epochs = log_epochs
+        self.log_every_epochs = log_every_epochs
         self.log_trajs = log_trajs
 
         self.log = pd.DataFrame(columns=['epoch', 'trajectory', 'state', 'action', 'reward', 'return'])
         for j in range(self.env.delays2change_num):
             self.log[f"ind {j}"] = None
             self.log[f"step {j}"] = None
+
+        self.log_best_traj = pd.DataFrame(columns=['epoch', 'trajectory', 'state', 'action', 'reward', 'return'])
+        for j in range(self.env.delays2change_num):
+            self.log_best_traj[f"ind {j}"] = None
+            self.log_best_traj[f"step {j}"] = None
 
         # Parameters to be tracked
         self.rewards_mean = []
@@ -170,6 +172,10 @@ class TrainingTracker:
         self.approx_kl_list = []
         self.clip_fraction_list = []
 
+        self.min_min_index_max_reward_list = []
+        self.mean_min_index_max_reward_list = []
+
+
         self.policy_ind_distr = []
         self.policy_step_distr = []
 
@@ -185,10 +191,8 @@ class TrainingTracker:
         """
         self.alg.policy.agent.eval()
         with torch.no_grad():
-            if curr_epoch in self.log_epochs:
-                # inputs = {"state": trajectory["observations"],
-                #         "time": trajectory["time_steps"]}
-                # act = self.alg.policy.act(inputs, training=True)
+            # Save trajectories every log_every_epochs epochs
+            if curr_epoch % self.log_every_epochs == 0:
                 # Calcualte trajectory length
                 traj_len = len(trajectory["rewards"].flatten()) // self.traj_per_batch
                 if self.log_trajs[1] + 1 > self.traj_per_batch:
@@ -196,7 +200,7 @@ class TrainingTracker:
                 for j_traj in range(*self.log_trajs):
                     for j_obs in range(traj_len):
                         for j_d2ch in range(self.env.delays2change_num):
-                            action = trajectory['actions'].reshape(self.traj_per_batch, traj_len, -1, 2)[j_traj, j_obs, j_d2ch, :]
+                            action = trajectory['actions'].reshape(self.traj_per_batch, traj_len, -1, 2)[j_traj, j_obs, j_d2ch, :].copy()
                             # Modify step index into step
                             action[1] = self.env.step_ind_to_step(action[1])
                             new_row = {
@@ -206,16 +210,45 @@ class TrainingTracker:
                                 'action': action,
                                 'reward': trajectory['rewards'].reshape(self.traj_per_batch, -1)[j_traj, j_obs],
                                 'return': trajectory['returns'].reshape(self.traj_per_batch, -1)[j_traj, j_obs],
-                                # f'ind {j_d2ch}': act['distribution'][j_d2ch][0].probs.detach().cpu().numpy().reshape(self.traj_per_batch, traj_len, -1)[j_traj, j_obs, :].tolist(),
-                                # f'step {j_d2ch}': act['distribution'][j_d2ch][1].probs.detach().cpu().numpy().reshape(self.traj_per_batch, traj_len, -1)[j_traj, j_obs, :].tolist()
-                                # f'ind {j_d2ch}': self.alg.distr_list[-1][j_d2ch][0].probs.detach().cpu().numpy().reshape(self.traj_per_batch, traj_len, -1)[j_traj, j_obs, :].tolist(),
-                                # f'step {j_d2ch}': self.alg.distr_list[-1][j_d2ch][1].probs.detach().cpu().numpy().reshape(self.traj_per_batch, traj_len, -1)[j_traj, j_obs, :].tolist()
                                 f'ind {j_d2ch}': self.alg.distr_list[-1][j_d2ch][0].cpu().numpy().reshape(self.traj_per_batch, traj_len, -1)[j_traj, j_obs, :].tolist(),
                                 f'step {j_d2ch}': self.alg.distr_list[-1][j_d2ch][1].cpu().numpy().reshape(self.traj_per_batch, traj_len, -1)[j_traj, j_obs, :].tolist()
                             }
-                            self.log.loc[len(self.log)] = new_row
+                            self.log.loc[len(self.log)] = deepcopy(new_row)
 
                 self.log.to_excel(os.path.join(self.save_path, "log.xlsx"), sheet_name="Training log", index=False)
+            
+            # Save trajectories every log_every_epochs epochs
+            if curr_epoch % self.log_every_epochs == 0:
+                # Save shortest trajectory, which includes best reward
+                rewards = trajectory['rewards'].reshape(self.traj_per_batch, -1)
+                max_inds = np.argwhere(rewards == np.max(rewards))
+                ind_best = sorted(max_inds, key=lambda p: p[1])[0][0]
+                # min_max_ind = np.min(max_inds)
+                # ind_best = np.argwhere(min_max_ind == max_inds)[0, 0]
+
+                # Calcualte trajectory length
+                traj_len = len(trajectory["rewards"].flatten()) // self.traj_per_batch
+                if self.log_trajs[1] + 1 > self.traj_per_batch:
+                    self.log_trajs[1] = self.traj_per_batch - 1
+                j_traj = ind_best
+                for j_obs in range(traj_len):
+                    for j_d2ch in range(self.env.delays2change_num):
+                        action = trajectory['actions'].reshape(self.traj_per_batch, traj_len, -1, 2)[j_traj, j_obs, j_d2ch, :].copy()
+                        # Modify step index into step
+                        action[1] = self.env.step_ind_to_step(action[1])
+                        new_row = {
+                            'epoch': curr_epoch,
+                            'trajectory': j_traj,
+                            'state': trajectory['observations'].reshape(self.traj_per_batch, -1, self.env.delays_number)[j_traj, j_obs, :],
+                            'action': action,
+                            'reward': trajectory['rewards'].reshape(self.traj_per_batch, -1)[j_traj, j_obs],
+                            'return': trajectory['returns'].reshape(self.traj_per_batch, -1)[j_traj, j_obs],
+                            f'ind {j_d2ch}': self.alg.distr_list[-1][j_d2ch][0].cpu().numpy().reshape(self.traj_per_batch, traj_len, -1)[j_traj, j_obs, :].tolist(),
+                            f'step {j_d2ch}': self.alg.distr_list[-1][j_d2ch][1].cpu().numpy().reshape(self.traj_per_batch, traj_len, -1)[j_traj, j_obs, :].tolist()
+                        }
+                        self.log_best_traj.loc[len(self.log_best_traj)] = deepcopy(new_row)
+
+                self.log_best_traj.to_excel(os.path.join(self.save_path, "log_best_traj.xlsx"), sheet_name="Training log, best trajectories", index=False)
 
     def accum_stat(self, minibatch):
 
@@ -228,6 +261,8 @@ class TrainingTracker:
             self.accum_policy_loss(minibatch)
             self.accum_grad_norm()
             self.accum_best_perform(minibatch)
+            self.accum_min_min_index_max_reward(minibatch)
+            self.accum_mean_min_index_max_reward(minibatch)
 
             if self.alg_type == 'ppo':
                 pass
@@ -241,6 +276,26 @@ class TrainingTracker:
             elif self.alg_type == 'pg':
                 self.accum_returns(minibatch)
                 self.accum_log_policy(minibatch)
+
+    def accum_min_min_index_max_reward(self, minibatch):
+        """ Calculates minimum index in batch of of minimum indices in trejectory of maximum reward among minibatch """
+        rewards = minibatch["rewards"].reshape(self.traj_per_batch, -1)
+        if isinstance(rewards, np.ma.MaskedArray):
+            rewards = rewards.filled(-1).copy()
+        min_min_ind_max_rew = np.min(np.argwhere(rewards == np.max(rewards))[:, 1])
+        self.min_min_index_max_reward_list.append(min_min_ind_max_rew)
+        if self.save_path is not None:
+            np.save(os.path.join(self.save_path, f"min_min_ind_max_reward.npy"), np.ma.filled(self.min_min_index_max_reward_list, np.nan))
+
+    def accum_mean_min_index_max_reward(self, minibatch):
+        """ Calculates mean index in batch of of minimum indices in trejectory of maximum reward among minibatch """
+        rewards = minibatch["rewards"].reshape(self.traj_per_batch, -1)
+        if isinstance(rewards, np.ma.MaskedArray):
+            rewards = rewards.filled(-1).copy()
+        mean_min_index_max_rew = np.mean(np.argwhere(rewards == np.max(rewards))[:, 1])
+        self.mean_min_index_max_reward_list.append(mean_min_index_max_rew)
+        if self.save_path is not None:
+            np.save(os.path.join(self.save_path, f"mean_min_index_max_reward.npy"), np.ma.filled(self.mean_min_index_max_reward_list, np.nan))
 
     def accum_rewards_last_mean(self, minibatch):
         """ Calculates mean of the last reward in trajectory """
@@ -362,7 +417,9 @@ class TrainingTracker:
             np.save(os.path.join(self.save_path, f"advantages.npy"), np.ma.filled(self.advantages, np.nan))
 
     def accum_returns(self, minibatch):
-        returns = np.mean(minibatch["returns"].flatten())
+        returns = minibatch["returns"].reshape(self.traj_per_batch, -1)
+        returns = np.mean(returns[:, 0])
+        # returns = np.mean(minibatch["returns"].flatten())
         self.returns.append(returns)
         if self.save_path is not None:
             np.save(os.path.join(self.save_path, f"returns.npy"), np.ma.filled(self.returns, np.nan))
