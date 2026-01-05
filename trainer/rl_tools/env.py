@@ -156,6 +156,8 @@ class PerformanceEnv(gym.Env):
                     truncated is True, is maximum number of steps is achieved,
                     terminated is always False, since agent can walk in the environment without limits.
         """
+        # print(action)
+        # sys.exit()
         assert self.action_space.contains(action), f"Chosen action is out of action space."
 
         terminated = False
@@ -373,6 +375,8 @@ class EnvRunner:
             for key, val in act.items():
                 trajectory[key].append(val)
                 
+            # print("Here! After policy act")
+            # sys.exit()
             obs, rew, terminated, truncated, _ = self.env.step(trajectory['actions'][-1])
 
             done = np.logical_or(terminated, truncated)
@@ -675,24 +679,14 @@ class TrajectorySamplerMemory:
             else:
                 self.trajectory['mask'] = np.zeros_like(self.trajectory['rewards'], dtype=int)
 
-            # print(self.trajectory['returns'])
             # Normalize returns in whole trajectory
             for transform in self.transforms:
                 transform(self.trajectory)         
-
-        # for name, item in self.trajectory.items():
-        #     print((name, item.shape))
-        # # print(self.trajectory['returns'].shape)
-        # sys.exit()
 
         minibatch = {}
         for key, value in self.trajectory.items():
             if key != 'state':
                 minibatch[key] = value[:, self.minibatch_count*batch_size: (self.minibatch_count + 1)*batch_size, ...]
-
-        # print(minibatch['actions'].shape)
-        # print(minibatch['observations'].shape)
-        # sys.exit()
 
         # for key, value in self.trajectory.items():
         #     if key != 'state':

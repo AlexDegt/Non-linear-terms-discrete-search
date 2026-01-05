@@ -454,14 +454,14 @@ class TrainingTracker:
             actions = torch.tensor(trajectory["actions"], device=self.alg.policy.agent.device)
             log_probs = torch.tensor(trajectory["log_probs"], device=self.alg.policy.agent.device)
             policy = act['distribution']
-            delays2change_num = actions.shape[1]
+            delays2change_num = actions.shape[-2]
             approx_kl = 0
             for j_delay in range(delays2change_num):
                 distr_ind, distr_step_ind = policy[j_delay]
-                log_prob_ind = distr_ind.log_prob(actions[:, j_delay, 0])
-                log_prob_step_ind = distr_step_ind.log_prob(actions[:, j_delay, 1])
-                log_prob_ind_old = log_probs[:, j_delay, 0]
-                log_prob_step_ind_old = log_probs[:, j_delay, 1]
+                log_prob_ind = distr_ind.log_prob(actions[..., j_delay, 0])
+                log_prob_step_ind = distr_step_ind.log_prob(actions[..., j_delay, 1])
+                log_prob_ind_old = log_probs[..., j_delay, 0]
+                log_prob_step_ind_old = log_probs[..., j_delay, 1]
                 approx_kl += log_prob_ind + log_prob_step_ind - log_prob_ind_old - log_prob_step_ind_old
             approx_kl = (-1 * approx_kl / (2 * delays2change_num)).mean().item()
             self.approx_kl_list.append(approx_kl)
@@ -477,14 +477,14 @@ class TrainingTracker:
             actions = torch.tensor(trajectory["actions"], device=self.alg.policy.agent.device)
             log_probs = torch.tensor(trajectory["log_probs"], device=self.alg.policy.agent.device)
             policy = act['distribution']
-            delays2change_num = actions.shape[1]
+            delays2change_num = actions.shape[-2]
             import_samp_ratio = 0
             for j_delay in range(delays2change_num):
                 distr_ind, distr_step_ind = policy[j_delay]
-                log_prob_ind = distr_ind.log_prob(actions[:, j_delay, 0])
-                log_prob_step_ind = distr_step_ind.log_prob(actions[:, j_delay, 1])
-                log_prob_ind_old = log_probs[:, j_delay, 0]
-                log_prob_step_ind_old = log_probs[:, j_delay, 1]
+                log_prob_ind = distr_ind.log_prob(actions[..., j_delay, 0])
+                log_prob_step_ind = distr_step_ind.log_prob(actions[..., j_delay, 1])
+                log_prob_ind_old = log_probs[..., j_delay, 0]
+                log_prob_step_ind_old = log_probs[..., j_delay, 1]
                 import_samp_ratio += log_prob_ind + log_prob_step_ind - log_prob_ind_old - log_prob_step_ind_old
             import_samp_ratio = torch.exp(import_samp_ratio / (2 * delays2change_num))
             clip_fraction = ((import_samp_ratio < 1.0 - eps) | (import_samp_ratio > 1.0 + eps)).float().mean().item()

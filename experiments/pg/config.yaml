@@ -32,7 +32,7 @@ dtype: complex128
 device: "cuda:1"
 # dtype: complex64
 # Path to the folder with data
-data_path: '../../data/BlackBoxData_80_cut_norm_correct.mat'
+data_path: 'data/BlackBoxData_80_cut_norm_correct.mat'
 # Channel to compensate: A or B
 channel: B
 # Allow to overwrite folder with saved results or not
@@ -49,7 +49,7 @@ state_alpha: 0.0
 reward_alpha: 0.0
 # Initial delays
 start_mode: same
-init_delays: [[-7, 7, 1]]
+init_delays: [[-3, 3, 1]]
 
 # Parameters of MLP agent
 hidden_delay_ind_size: 256
@@ -60,12 +60,12 @@ hidden_delay_step_num: 3
 ind_choice_embed_size: 200
 hidden_shared_size: 256
 hidden_shared_num: 3
-# Parameters of LSTM agent
+# Parameters of LSTM Shared-head agent
 hidden_size: 64
 stepid_embed_size: 50
 # General training parameters
 num_runner_steps: 9 # Steps in trajectory
-traj_per_batch: 2 # Number of trajectories per batch
+traj_per_batch: 50 # Number of trajectories per batch
 # 'discount' - disount with gamma, 'terminal' - terminal return, 'max' - max(rewards) return 
 accum_return_mode: 'max'
 # All steps in trajectory after maximum reward-step are masked
@@ -73,7 +73,7 @@ accum_return_mode: 'max'
 mask_max: True
 gamma: 0.1 # discount. Used only if accum_return_mode == 'discount'
 # gamma: 0.8 # discount
-num_minibatches: 3 # Number of mini-batches to divide whole trajectory into
+num_minibatches: 1 # Number of mini-batches to divide whole trajectory into
 total_epoch_num: 2000 # Total number of epochs
 lr: 0.0003 # Adam learning rate
 eps: 0.00000001 # Adam epsilon

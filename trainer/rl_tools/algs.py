@@ -175,24 +175,13 @@ class PolicyGradient:
             distr_detached.append(distr_detached_nested)
         self.distr_list.append(distr_detached)
 
-        delays2change_num = actions.shape[1]
+        delays2change_num = actions.shape[-2]
         log_policy = 0
         for j_delay in range(delays2change_num):
             distr_ind, distr_step_ind = policy[j_delay]
-            log_prob_ind = distr_ind.log_prob(actions[:, j_delay, 0])
-            log_prob_step_ind = distr_step_ind.log_prob(actions[:, j_delay, 1])
+            log_prob_ind = distr_ind.log_prob(actions[..., j_delay, 0])
+            log_prob_step_ind = distr_step_ind.log_prob(actions[..., j_delay, 1])
             log_policy += log_prob_ind + log_prob_step_ind
-        # log_policy /= (2 * delays2change_num)
-        # print(sum(~mask).item())
-        # print(returns)
-        # print(returns * (~mask))
-        # print(log_policy)
-        # sys.exit()
-        # print((~mask).sum())
-        # print(((-1) * ~mask).sum())
-        # print((log_policy * returns * (~mask)).sum())
-        # print((log_policy * returns * ((-1) * ~mask)).sum())
-        # sys.exit()
         loss = -1 * (log_policy * returns * (~mask)).sum() / (~mask).sum()
         self.policy_loss_list.append(loss.item())
         return loss
@@ -203,12 +192,12 @@ class PolicyGradient:
         mask = torch.tensor(trajectory["mask"], device=self.policy.agent.device)
         policy = act['distribution']
 
-        delays2change_num = actions.shape[1]
+        delays2change_num = actions.shape[-2]
         log_policy = 0
         for j_delay in range(delays2change_num):
             distr_ind, distr_step_ind = policy[j_delay]
-            log_prob_ind = distr_ind.log_prob(actions[:, j_delay, 0])
-            log_prob_step_ind = distr_step_ind.log_prob(actions[:, j_delay, 1])
+            log_prob_ind = distr_ind.log_prob(actions[..., j_delay, 0])
+            log_prob_step_ind = distr_step_ind.log_prob(actions[..., j_delay, 1])
             log_policy += log_prob_ind + log_prob_step_ind
         entropy = -1 * (torch.exp(log_policy) * log_policy * (~mask)).sum() / (~mask).sum()
         # log_policy /= (2 * delays2change_num)

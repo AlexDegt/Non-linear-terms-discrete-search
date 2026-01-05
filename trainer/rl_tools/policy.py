@@ -716,21 +716,13 @@ class LSTMShared(nn.Module):
 
     def forward(self, x, h, c):
         # t_step: (batch_size, length, 1)
-        # print(x["time"].shape)
-        # print(x["state"].shape)
-        # sys.exit()
         t_step = x["time"].to(torch.int32)
-        # t_step = torch.permute(x["time"], (1, 0)).to(torch.int32)
-        # x: (batch_size, length, channels)
         x = x["state"]
         x = torch.cat((x, self.stepid_embed(t_step).squeeze(1)), dim=-1)
-        print(x.shape)
-        # sys.exit()
         policy = []
 
+        # Debug train model of agent. It crushes here!
         x, (h, c) = self.shared_back(x, (h, c))
-
-        print(x.size(), h.size(), c.size())
 
         x_policy = x.clone()
         for layer in self.delay_range:
@@ -1034,7 +1026,7 @@ class Policy_v1_3:
 class PolicyMemory:
     def __init__(self, agent):
         self.agent = agent
-        # LSTM hidden vactors
+        # LSTM hidden vectors
         self.h = None
         self.c = None
     
@@ -1042,14 +1034,12 @@ class PolicyMemory:
         pass
 
     def act(self, inputs, training=False):
+
         for key, val in inputs.items():
             val = torch.tensor(val)
-            # Number of input tensor dimensions must equal 3:
-            # 1-st - batch size (if batch_first=True for RNN), 
-            # 2-nd - sequence length, 3-d - state dimension.
+            # Number of input tensor dimensions must equal 2:
+            # 1-st - sequence length, 2-nd - state dimension.
             if val.ndim == 1:
-                val = val.unsqueeze(0).unsqueeze(0)
-            elif val.ndim == 2:
                 val = val.unsqueeze(0)
             elif val.ndim == 0 or val.ndim > 3:
                 raise ValueError(f"Number of state dimensions is unacceptable.")
@@ -1058,20 +1048,18 @@ class PolicyMemory:
             val = val.to(self.agent.device).to(torch.float32)
             inputs[key] = val
 
-        # print(inputs["state"].shape)
-        # print(inputs["time"].shape)
-        # sys.exit()
-        batch_size = inputs["state"].shape[0]
-        if self.h == None:
+        is_first_batch = 0 in inputs["time"]
+
+        if training == False and is_first_batch:
+            self.h = torch.zeros((self.agent.num_lstm_layers, self.agent.hidden_size), device=self.agent.device)
+            self.c = torch.zeros_like(self.h)
+        elif training == True and is_first_batch:
+            # Batch size equals the number of trajectories in batch
+            batch_size = inputs["state"].size(dim=0)
             self.h = torch.zeros((self.agent.num_lstm_layers, batch_size, self.agent.hidden_size), device=self.agent.device)
-        if self.c == None:
             self.c = torch.zeros_like(self.h)
 
-        policy, h, c = self.agent(inputs, self.h, self.c)
-
-        # Now debug agent with 3-dim input
-        print("Agent is debugged!")
-        sys.exit()
+        policy, self.h, self.c = self.agent(inputs, self.h, self.c)
 
         indices = policy[:int(len(policy) // 2)]
         steps = policy[int(len(policy) // 2):]
@@ -1088,10 +1076,11 @@ class PolicyMemory:
             actions.append(action.detach().cpu().numpy().tolist())
             log_probs.append(log_prob.detach().cpu().numpy().tolist())
 
-        # print(np.array(actions).shape)
-        # print(np.array(log_probs).shape)
-        # sys.exit()
+        # Here actions and log_probs shapes correspond to following:
+        # (number of delays to change, sequence length, actions indices)
 
+        # This only used at sampling process.
+        # Note that at sampling process always sequence length == 1
         actions = np.array(actions)[:, 0, :].tolist()
         log_probs = np.array(log_probs)[:, 0, :].tolist()
 

@@ -1,7 +1,9 @@
 import sys
-
-sys.path.append('../../')
 import os 
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(os.path.dirname(current_dir))
+sys.path.insert(0, project_root)
 
 import torch
 import random
@@ -16,7 +18,7 @@ import yaml
 import shutil
 
 # Load yaml file
-config_path = "config.yaml"
+config_path = os.path.join(current_dir, "config.yaml") 
 with open(config_path, "r") as file:
     config = yaml.safe_load(file)
 
@@ -48,8 +50,7 @@ data_path = config["data_path"]
 exp_name = config["trial_name"]
 add_folder = config["add_folder"]
 
-curr_path = os.getcwd()
-save_path = os.path.join(curr_path, add_folder, exp_name)
+save_path = os.path.join(current_dir, add_folder, exp_name)
 os.makedirs(save_path, exist_ok=config["overwrite_file"])
 
 # Save config file in experiment folder

@@ -211,8 +211,6 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
 
         pg.step(minibatch)
 
-        assert False, "Currently memory agent is under debug"
-
         sched.step()
         tracker.accum_stat(trajectory)
 
