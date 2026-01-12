@@ -684,7 +684,7 @@ class LSTMShared(nn.Module):
     """
     def __init__(self, state_dim, delays2change_num, delays_steps_num,
                  trajectory_len, stepid_embed_size,
-                 hidden_size=64,
+                 hidden_size=64, num_lstm_layers=1,
                  device='cuda'):
         super().__init__()
         self.device = device
@@ -692,7 +692,7 @@ class LSTMShared(nn.Module):
         self.delays2change_num = delays2change_num
         self.delays_steps_num = delays_steps_num
         self.hidden_size = hidden_size
-        self.num_lstm_layers = 1
+        self.num_lstm_layers = num_lstm_layers
 
         # self.act = torch.nn.Tanh()
         # self.act = torch.nn.SiLU()
@@ -704,7 +704,7 @@ class LSTMShared(nn.Module):
         # Shared part (LSTM-based)
         input_size = state_dim + stepid_embed_size
         self.shared_back = nn.LSTM(input_size, hidden_size, num_layers=self.num_lstm_layers, batch_first=True, device=device)
-        self.layer_norm = nn.LayerNorm(hidden_size, elementwise_affine=True, device=device)
+        self.c = nn.LayerNorm(hidden_size, elementwise_affine=True, device=device)
         for _ in range(delays2change_num):
             # Delay indices part (MLP-based)
             self.delay_range.append(nn.Linear(hidden_size, state_dim, device=device))

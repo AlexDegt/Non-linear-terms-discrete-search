@@ -115,9 +115,17 @@ class PerformanceEnv(gym.Env):
             self.state = np.zeros(delays_number, dtype=int).tolist()
         self.step_curr = 1 # Current step number
         self.max_steps = max_steps
-
+        
+        # Calculate initial reward
+        delays = np.array(self.state).reshape(-1, self.__delays_in_branch).tolist()
+        self.tomb_raider.set_delays(delays)
+        with no_print():
+            _, perform_db = self.__train_tomb_raider()
+        self.init_reward = -1 * perform_db
         # Store best performance value (dB) and corresponding delays
-        self.best_perform = 100
+        # self.best_perform = 100
+        self.best_perform = perform_db
+
         self.best_delays = []
 
         # Dataframe to save delays sets already researched by Oracle
@@ -357,6 +365,8 @@ class EnvRunner:
         observations = []
         rewards = []
         resets = []
+        # Increment rewards: max(0, rewards[t] - max_{k<t}(rewards[k]))
+        rewards_inc = []
         time_steps = []
         self.state["env_steps"] = self.nsteps
 
@@ -381,6 +391,13 @@ class EnvRunner:
 
             done = np.logical_or(terminated, truncated)
             self.state["latest_observation"] = deepcopy(obs)
+
+            if i == 0:
+                max_prev_inc_reward = rew - self.env.init_reward
+            if i > 0:
+                max_prev_inc_reward = rew - np.max(rewards)
+            rewards_inc.append(max(0, max_prev_inc_reward))
+
             rewards.append(rew)
             resets.append(done)
 
@@ -388,7 +405,8 @@ class EnvRunner:
             observations=observations,
             rewards=rewards,
             resets=resets,
-            time_steps=time_steps)
+            time_steps=time_steps,
+            rewards_inc=rewards_inc,)
         trajectory["state"] = deepcopy(self.state)
 
         for transform in self.transforms:

@@ -182,7 +182,10 @@ class PolicyGradient:
             log_prob_ind = distr_ind.log_prob(actions[..., j_delay, 0])
             log_prob_step_ind = distr_step_ind.log_prob(actions[..., j_delay, 1])
             log_policy += log_prob_ind + log_prob_step_ind
-        loss = -1 * (log_policy * returns * (~mask)).sum() / (~mask).sum()
+        time_correction = 1 / (~mask).sum(dim=1)[:, None]
+        # time_correction = 1
+        # loss = -1 * (log_policy * returns * (~mask) * time_correction).sum() / (~mask).sum()
+        loss = -1 * (log_policy * returns * (~mask) * time_correction).sum() / (2 * delays2change_num * mask.shape[0])
         self.policy_loss_list.append(loss.item())
         return loss
 
@@ -199,7 +202,10 @@ class PolicyGradient:
             log_prob_ind = distr_ind.log_prob(actions[..., j_delay, 0])
             log_prob_step_ind = distr_step_ind.log_prob(actions[..., j_delay, 1])
             log_policy += log_prob_ind + log_prob_step_ind
-        entropy = -1 * (torch.exp(log_policy) * log_policy * (~mask)).sum() / (~mask).sum()
+        time_correction = 1 / (~mask).sum(dim=1)[:, None]
+        # time_correction = 1
+        # entropy = -1 * (torch.exp(log_policy) * log_policy * (~mask) * time_correction).sum() / (~mask).sum()
+        entropy = -1 * (torch.exp(log_policy) * log_policy * (~mask) * time_correction).sum() / (2 * delays2change_num * mask.shape[0])
         # log_policy /= (2 * delays2change_num)
         # entropy += distr_ind.entropy().mean() + distr_step_ind.entropy().mean()
         self.explore_loss_list.append(entropy.item())

@@ -129,6 +129,7 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
     hidden_shared_size = config["hidden_shared_size"]
     hidden_shared_num = config["hidden_shared_num"]
     hidden_size = config["hidden_size"]
+    num_lstm_layers = config["num_lstm_layers"]
     # agent = MLPConditionalStep(state_dim, delays2change_num, delays_steps_num,
     #                         num_runner_steps, stepid_embed_size, ind_choice_embed_size,
     #                         hidden_shared_size, hidden_shared_num,
@@ -141,7 +142,7 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
     #                         hidden_delay_step_size, hidden_delay_step_num,
     #                         model.device)
     agent = LSTMShared(state_dim, delays2change_num, delays_steps_num,
-                       num_runner_steps, stepid_embed_size, hidden_size, 
+                       num_runner_steps, stepid_embed_size, hidden_size, num_lstm_layers,
                        model.device)
     agent.count_parameters()
     # agent.enumerate_parameters()

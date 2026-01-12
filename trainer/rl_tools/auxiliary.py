@@ -56,14 +56,15 @@ class AccumReturn:
     def __init__(self, policy, gamma=0.99, mode='terminal'):
         self.policy = policy
         self.gamma = gamma
-        assert mode == 'terminal' or mode == 'discount' or mode == 'max', \
-            f"Return accumulation mode must be either \'discount\', \'terminal\' or \'max\', but {mode} is given."
+        assert mode == 'terminal' or mode == 'discount' or mode == 'max' or mode == 'discount_increment', \
+            f"Return accumulation mode must be either \'discount\', \'terminal\', \'max\' or \'discount_increment\',, but {mode} is given."
         self.mode = mode
         
     def __call__(self, trajectory):
         gamma = self.gamma
 
         rewards = np.asarray(trajectory["rewards"], dtype=np.float32).flatten()
+        rewards_inc = np.asarray(trajectory["rewards_inc"], dtype=np.float32).flatten()
         dones   = np.asarray(trajectory["resets"],  dtype=np.float32).flatten()
         T = len(rewards)
         returns = np.zeros_like(rewards, dtype=np.float32)
@@ -77,6 +78,9 @@ class AccumReturn:
                 returns[t] = rewards[-1]
             elif self.mode == 'max':
                 returns[t] = np.max(rewards)
+            elif self.mode == 'discount_increment':
+                R = rewards_inc[t] + gamma * R * (1.0 - dones[t])
+                returns[t] = R
 
         trajectory["returns"] = returns.astype(np.float32)
         return trajectory
@@ -98,10 +102,24 @@ class NormalizeReturns:
         # returns = np.asarray(trajectory["returns"]).flatten()
         # returns = np.asarray(trajectory["returns"])
         returns = trajectory["returns"].copy()
-        var = returns[:, 0].var()
-        mean = returns[:, 0].mean()
-        # print(f"Mean ret = {mean:.3e}, var ret = {var:.3e}")
+
+        # No baseline. For max reward strategy
+        # var = returns[:, 0].var()
+        # mean = returns[:, 0].mean()
+        # ret = (returns - mean) / np.sqrt(var + eps)
+
+        # No baseline. For max inrement strategy
+        var = returns.var()
+        mean = returns.mean()
         ret = (returns - mean) / np.sqrt(var + eps)
+        
+        # Baseline. For max reward strategy
+        # self.baseline = 0.99 * self.baseline + 0.01 * mean
+        # adv = returns - self.baseline
+        # var = adv[:, 0].var()
+        # mean = adv[:, 0].mean()
+        # ret = (adv - mean) / np.sqrt(var + eps)
+        
         # ret = returns - 14
         # print(max(ret))
         trajectory["returns"] = ret
