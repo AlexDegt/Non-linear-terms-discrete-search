@@ -718,7 +718,10 @@ class LSTMShared(nn.Module):
         # t_step: (batch_size, length, 1)
         t_step = x["time"].to(torch.int32)
         x = x["state"]
-        x = torch.cat((x, self.stepid_embed(t_step).squeeze(1)), dim=-1)
+        if x.dim() == 3 and t_step.dim() == 2:
+            t_step = t_step.unsqueeze(-1)
+        x = torch.cat((x, t_step), dim=-1)
+        # x = torch.cat((x, self.stepid_embed(t_step).squeeze(1)), dim=-1)
         policy = []
 
         # Debug train model of agent. It crushes here!
