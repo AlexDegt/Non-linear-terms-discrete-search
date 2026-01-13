@@ -375,7 +375,7 @@ class EnvRunner:
             time_steps.append(i)
             norm_param = max(max(abs(self.env.state_space.high)), max(abs(self.env.state_space.low)))
             inputs = {"state": observations[-1] / norm_param,
-                      "time": [time_steps[-1]]}
+                      "time": [time_steps[-1] / self.nsteps]}
             # with torch.no_grad():
             #     act = self.policy.act(inputs)
             act = self.policy.act(inputs)
