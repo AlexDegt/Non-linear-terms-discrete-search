@@ -145,7 +145,7 @@ class TrainingTracker:
         log_every_epochs (int): logs are saved every log_every_epochs epochs.
         log_trajs (list): trajectory indices range to log states and actions.
     """
-    def __init__(self, env, alg, traj_per_batch, log_every_epochs: int, log_trajs: list, save_path=None, alg_type='ppo'):
+    def __init__(self, env, alg, traj_per_batch, log_every_epochs: int, log_trajs: list, save_path=None, alg_type='ppo', summary_writer=None):
         
         self.env = env
         self.alg = alg
@@ -155,6 +155,9 @@ class TrainingTracker:
 
         self.log_every_epochs = log_every_epochs
         self.log_trajs = log_trajs
+
+        self.summary_writer = summary_writer
+        self.summary_writer_global_step = 0
 
         self.log = pd.DataFrame(columns=['epoch', 'trajectory', 'state', 'action', 'reward', 'return'])
         for j in range(self.env.delays2change_num):
@@ -271,6 +274,8 @@ class TrainingTracker:
 
     def accum_stat(self, minibatch):
 
+        self.summary_writer_global_step += 1
+
         self.alg.policy.agent.eval()
         with torch.no_grad():
             self.accum_rewards_last_mean(minibatch)
@@ -295,6 +300,10 @@ class TrainingTracker:
             elif self.alg_type == 'pg':
                 self.accum_returns(minibatch)
                 self.accum_log_policy(minibatch)
+
+        # Flush TensorBoard summary writer
+        if self.summary_writer_global_step % 10 == 0:
+            self.summary_writer.flush()
 
     def accum_min_min_index_max_reward(self, minibatch):
         """ Calculates minimum index in batch of of minimum indices in trejectory of maximum reward among minibatch """
@@ -337,6 +346,10 @@ class TrainingTracker:
         rewards_max_per_traj = np.max(rewards.reshape(self.traj_per_batch, -1), axis=1)
         rewards = np.mean(rewards_max_per_traj)
         self.rewards_max_mean.append(rewards)
+        
+        if self.summary_writer is not None:
+            self.summary_writer.add_scalar("train/max_reward_mean", rewards, self.summary_writer_global_step)
+
         if self.save_path is not None:
             np.save(os.path.join(self.save_path, f"rewards_max_mean.npy"), np.ma.filled(self.rewards_max_mean, np.nan))
     
@@ -371,6 +384,10 @@ class TrainingTracker:
 
     def accum_entropy(self, minibatch):
         self.policy_entropy = self.alg.explore_loss_list
+        
+        if self.summary_writer is not None:
+            self.summary_writer.add_scalar("train/policy_entropy", self.policy_entropy[-1], self.summary_writer_global_step)
+        
         if self.save_path is not None:
             np.save(os.path.join(self.save_path, f"policy_entropy.npy"), np.ma.filled(self.policy_entropy, np.nan))
 
@@ -387,6 +404,10 @@ class TrainingTracker:
 
     def accum_policy_loss(self, minibatch):
         self.policy_loss = self.alg.policy_loss_list
+
+        if self.summary_writer is not None:
+            self.summary_writer.add_scalar("train/policy_loss", self.policy_loss[-1], self.summary_writer_global_step)
+
         if self.save_path is not None:
             np.save(os.path.join(self.save_path, f"policy_loss.npy"), np.ma.filled(self.policy_loss, np.nan))
 
@@ -411,6 +432,10 @@ class TrainingTracker:
         with torch.no_grad():
             grads = [p.grad.detach().norm()**2 for p in self.alg.policy.agent.parameters() if p.grad is not None]
             grad_norm = torch.sqrt(torch.stack(grads).sum()).item()
+        
+        if self.summary_writer is not None:
+            self.summary_writer.add_scalar("train/grad_norm", grad_norm, self.summary_writer_global_step)
+        
         self.grad_norm.append(grad_norm)
         if self.save_path is not None:
             np.save(os.path.join(self.save_path, f"grad_norm.npy"), np.ma.filled(self.grad_norm, np.nan))

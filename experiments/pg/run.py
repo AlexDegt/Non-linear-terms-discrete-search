@@ -1,5 +1,7 @@
 import sys
-import os 
+import os, time
+
+from torch.utils.tensorboard import SummaryWriter
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(os.path.dirname(current_dir))
@@ -49,6 +51,11 @@ data_path = config["data_path"]
 # Determine experiment name and create its directory
 exp_name = config["trial_name"]
 add_folder = config["add_folder"]
+
+run_name = time.strftime("run_%Y%m%d_%H%M%S_" + exp_name)
+logdir = os.path.join(project_root, "log_tb", run_name)
+os.makedirs(logdir, exist_ok=config["overwrite_file"])
+writer = SummaryWriter(log_dir=logdir)
 
 save_path = os.path.join(current_dir, add_folder, exp_name)
 os.makedirs(save_path, exist_ok=config["overwrite_file"])
@@ -156,4 +163,4 @@ print(f"Current model parameters number is {count_parameters(model)}")
 
 best_delays = train_pg(model, train_dataset, train_dataset, train_dataset, loss, quality_criterion, config, batch_to_tensors,
                                         tensors_to_batch, chunk_num=chunk_num, save_path=save_path, exp_name=exp_name,
-                                        weight_names=weight_names, delays_range=delays_range, iter_num=iter_num)
+                                        weight_names=weight_names, delays_range=delays_range, iter_num=iter_num, summary_writer=writer)

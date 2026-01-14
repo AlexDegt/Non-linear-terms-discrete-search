@@ -33,7 +33,7 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
                                    test_dataset: DataLoaderType, loss_fn: LossFnType, quality_criterion: LossFnType, config: dict,
                                    batch_to_tensors: BatchTensorType, tensors_to_batch: BatchTensorType, chunk_num: OptionalInt = None, 
                                    save_path: OptionalStr = None, exp_name: OptionalStr = None, weight_names: StrOrList = None,
-                                   delays_range: OptionalList = None, iter_num: OptionalInt = None):
+                                   delays_range: OptionalList = None, iter_num: OptionalInt = None, summary_writer = None):
     """
     Function implements simple Policy Gradient algorithm for optimal delays search.
 
@@ -68,7 +68,8 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
             If None delays_range is set to [-15, 15, 3]. Defaults to None.
         iter_num (int, optional): Number of OLS iterations. Each new iteration corresponds to 1 new model branch.
             If None, then it is set to 1. Defaults to None.
-
+        summary_writer (optional): TensorBoard summary writer.
+            
     Returns:
         Learning curve (list), containing quality criterion calculated each epoch of learning.
     """
@@ -201,7 +202,7 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
     alg_type = 'pg'
     log_every_epochs = config["log_every_epochs"]
     log_trajs = config["log_trajs"]
-    tracker = TrainingTracker(env, pg, traj_per_batch, log_every_epochs, log_trajs, save_path, alg_type)
+    tracker = TrainingTracker(env, pg, traj_per_batch, log_every_epochs, log_trajs, save_path, alg_type, summary_writer)
     
     for epoch in range(epochs):
         t_epoch_start = time.time()
@@ -221,6 +222,8 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
 
         t_epoch_end = time.time()
         print(f"Epoch {epoch}, reward max mean = {tracker.rewards_max_mean[-1]:.5f}, time per epoch {(t_epoch_end - t_epoch_start):.3f} s")
+
+    summary_writer.close()
 
     general_timer.__exit__()
     print(f"Total time elapsed: {general_timer.interval} s")
