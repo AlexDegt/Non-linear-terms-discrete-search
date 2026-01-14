@@ -213,7 +213,8 @@ class PolicyGradient:
 
     def loss(self, trajectory):
         inputs = {"state": trajectory["observations"],
-                  "time": trajectory["time_steps"]}
+                  "time": trajectory["time_steps"],
+                  "max_prefix": trajectory["max_prefixes"]}
         act = self.policy.act(inputs, training=True)
         policy_loss = self.policy_loss(trajectory, act)
         explore_loss = self.explore_loss(trajectory, act)

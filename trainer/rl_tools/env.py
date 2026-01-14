@@ -365,17 +365,24 @@ class EnvRunner:
         observations = []
         rewards = []
         resets = []
+        max_prefixes = []
         # Increment rewards: max(0, rewards[t] - max_{k<t}(rewards[k]))
         rewards_inc = []
         time_steps = []
         self.state["env_steps"] = self.nsteps
 
         for i in range(self.nsteps):
-            observations.append(deepcopy(self.state["latest_observation"]))
-            time_steps.append(i)
             norm_param = max(max(abs(self.env.state_space.high)), max(abs(self.env.state_space.low)))
-            inputs = {"state": observations[-1] / norm_param,
-                      "time": [time_steps[-1] / self.nsteps]}
+            observations.append(deepcopy(self.state["latest_observation"] / norm_param))
+            time_steps.append(i / self.nsteps)
+            if rewards_inc == []:
+                max_prefix = 0
+            else:
+                max_prefix = np.max(rewards_inc)
+            max_prefixes.append(max_prefix)
+            inputs = {"state": observations[-1],# / norm_param,
+                      "time": [time_steps[-1]],# / self.nsteps],
+                      "max_prefix": [max_prefix]}
             # with torch.no_grad():
             #     act = self.policy.act(inputs)
             act = self.policy.act(inputs)
@@ -406,7 +413,8 @@ class EnvRunner:
             rewards=rewards,
             resets=resets,
             time_steps=time_steps,
-            rewards_inc=rewards_inc,)
+            rewards_inc=rewards_inc,
+            max_prefixes=max_prefixes,)
         trajectory["state"] = deepcopy(self.state)
 
         for transform in self.transforms:
@@ -690,7 +698,7 @@ class TrajectorySamplerMemory:
                         if key == "actions" or key == "log_probs":
                             self.trajectory[key] = np.ma.array(self.trajectory[key], mask=mask_action, dtype=self.trajectory[key].dtype)
                         elif key == "observations":
-                            self.trajectory[key] = np.ma.array(self.trajectory[key], mask=mask_state, dtype=int)
+                            self.trajectory[key] = np.ma.array(self.trajectory[key], mask=mask_state, dtype=self.trajectory[key].dtype)
                         else:
                             self.trajectory[key] = np.ma.array(self.trajectory[key], mask=mask, dtype=self.trajectory[key].dtype)
                 self.trajectory['mask'] = mask

@@ -208,6 +208,7 @@ class TrainingTracker:
             curr_epoch (int): current epoch.
         """
         self.alg.policy.agent.eval()
+        norm_param = max(max(abs(self.env.state_space.high)), max(abs(self.env.state_space.low)))
         with torch.no_grad():
             # Save trajectories every log_every_epochs epochs
             if curr_epoch % self.log_every_epochs == 0:
@@ -224,7 +225,7 @@ class TrainingTracker:
                             new_row = {
                                 'epoch': curr_epoch,
                                 'trajectory': j_traj,
-                                'state': trajectory['observations'].reshape(self.traj_per_batch, -1, self.env.delays_number)[j_traj, j_obs, :],
+                                'state': (trajectory['observations'].reshape(self.traj_per_batch, -1, self.env.delays_number)[j_traj, j_obs, :] * norm_param).astype(int),
                                 'action': action,
                                 'reward': trajectory['rewards'].reshape(self.traj_per_batch, -1)[j_traj, j_obs],
                                 'return': trajectory['returns'].reshape(self.traj_per_batch, -1)[j_traj, j_obs],
@@ -257,7 +258,7 @@ class TrainingTracker:
                         new_row = {
                             'epoch': curr_epoch,
                             'trajectory': j_traj,
-                            'state': trajectory['observations'].reshape(self.traj_per_batch, -1, self.env.delays_number)[j_traj, j_obs, :],
+                            'state': (trajectory['observations'].reshape(self.traj_per_batch, -1, self.env.delays_number)[j_traj, j_obs, :] * norm_param).astype(int),
                             'action': action,
                             'reward': trajectory['rewards'].reshape(self.traj_per_batch, -1)[j_traj, j_obs],
                             'return': trajectory['returns'].reshape(self.traj_per_batch, -1)[j_traj, j_obs],
@@ -376,7 +377,8 @@ class TrainingTracker:
     def accum_value_loss(self, minibatch):
         with torch.no_grad():
             inputs = {"state": minibatch["observations"],
-                      "time": minibatch["time_steps"]}
+                      "time": minibatch["time_steps"],
+                      "max_prefix": minibatch["max_prefixes"]}
             act = self.alg.policy.act(inputs, training=True)
             value_loss = self.alg.value_loss(minibatch, act).item()
             self.value_loss.append(value_loss)
@@ -397,7 +399,8 @@ class TrainingTracker:
     def accum_value_predicts(self, minibatch):
         with torch.no_grad():
             inputs = {"state": minibatch["observations"],
-                      "time": minibatch["time_steps"]}
+                      "time": minibatch["time_steps"],
+                      "max_prefix": minibatch["max_prefixes"]}
             act = self.alg.policy.act(inputs, training=True)
             value_predicts = np.mean(act["values"].detach().cpu().numpy().flatten())
             self.value_predicts.append(value_predicts)
@@ -467,7 +470,8 @@ class TrainingTracker:
     def approx_kl(self, trajectory):
         with torch.no_grad():
             inputs = {"state": trajectory["observations"],
-                      "time": trajectory["time_steps"]}
+                      "time": trajectory["time_steps"],
+                      "max_prefix": trajectory["max_prefixes"]}
             act = self.alg.policy.act(inputs, training=True)
             actions = torch.tensor(trajectory["actions"], device=self.alg.policy.agent.device)
             log_probs = torch.tensor(trajectory["log_probs"], device=self.alg.policy.agent.device)
@@ -490,7 +494,8 @@ class TrainingTracker:
         eps = self.alg.cliprange_policy
         with torch.no_grad():
             inputs = {"state": trajectory["observations"],
-                      "time": trajectory["time_steps"]}
+                      "time": trajectory["time_steps"],
+                      "max_prefix": trajectory["max_prefixes"]}
             act = self.alg.policy.act(inputs, training=True)
             actions = torch.tensor(trajectory["actions"], device=self.alg.policy.agent.device)
             log_probs = torch.tensor(trajectory["log_probs"], device=self.alg.policy.agent.device)

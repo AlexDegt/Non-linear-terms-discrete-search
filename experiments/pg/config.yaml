@@ -12,7 +12,8 @@ trial_descript: Training of 1D Chebyshev polynomial-based model
 # trial_name: start_from_m7_7_1_max_step_1_step_num_15_ret_norm_mask_after_max_reward_step_id_pos_one_hot_15
 # trial_name: start_from_m7_7_1_max_step_1_step_num_30_ret_norm_mask_after_max_reward_step_id_200_entr_0_001
 # trial_name: test
-trial_name: mask_after_max_fixed_time_embed
+trial_name: max_prefix_clip_grad_1_step_3e_4
+# trial_name: fixed_state_clip_grad_1_step_3e_4
 # trial_name: lstm_hidden_256_shared_7_7_7_max_step_1_step_num_50_stepid_1000
 # trial_name: lstm_hidden_128_layers_10_shared_7_7_7_max_step_1_step_num_50_stepid_1_correct_loss
 # trial_name: lstm_hidden_128_shared_7_7_7_max_step_1_step_num_50_stepid_1_correct_loss_v2_0_entr_1e_3_baseline_0_99
@@ -34,7 +35,7 @@ block_size: 99840
 # Increase this parameter if you obtain out of memory error.
 chunk_num: 1
 dtype: complex128
-device: "cuda:0"
+device: "cuda:2"
 # dtype: complex64
 # Path to the folder with data
 data_path: '../../data/BlackBoxData_80_cut_norm_correct.mat'
@@ -92,4 +93,4 @@ log_trajs: [0, 100] # Range, must be 2 values
 
 # Policy Gradient training parameters
 explore_loss_coef: 0.001 # weight of explore loss
-max_grad_norm: 1000 # Maximum grad norm for clipping
+max_grad_norm: 1 # Maximum grad norm for clipping

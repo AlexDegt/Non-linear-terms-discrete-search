@@ -702,7 +702,7 @@ class LSTMShared(nn.Module):
         self.delay_range = nn.ModuleList()
         self.delay_steps = nn.ModuleList()
         # Shared part (LSTM-based)
-        input_size = state_dim + stepid_embed_size
+        input_size = state_dim + stepid_embed_size + 1
         self.shared_back = nn.LSTM(input_size, hidden_size, num_layers=self.num_lstm_layers, batch_first=True, device=device)
         self.c = nn.LayerNorm(hidden_size, elementwise_affine=True, device=device)
         for _ in range(delays2change_num):
@@ -716,11 +716,14 @@ class LSTMShared(nn.Module):
 
     def forward(self, x, h, c):
         # t_step: (batch_size, length, 1)
-        t_step = x["time"].to(torch.int32)
+        t_step = x["time"]
+        max_prefix = x["max_prefix"]
         x = x["state"]
         if x.dim() == 3 and t_step.dim() == 2:
             t_step = t_step.unsqueeze(-1)
-        x = torch.cat((x, t_step), dim=-1)
+        if x.dim() == 3 and max_prefix.dim() == 2:
+            max_prefix = max_prefix.unsqueeze(-1)
+        x = torch.cat((x, t_step, max_prefix), dim=-1)
         # x = torch.cat((x, self.stepid_embed(t_step).squeeze(1)), dim=-1)
         policy = []
 
