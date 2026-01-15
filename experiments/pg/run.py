@@ -52,7 +52,7 @@ data_path = config["data_path"]
 exp_name = config["trial_name"]
 add_folder = config["add_folder"]
 
-run_name = time.strftime("run_%Y%m%d_%H%M%S_" + exp_name)
+run_name = time.strftime("run_%Y_%m_%d_%Hh%Mm%Ss_" + exp_name)
 logdir = os.path.join(project_root, "log_tb", run_name)
 os.makedirs(logdir, exist_ok=config["overwrite_file"])
 writer = SummaryWriter(log_dir=logdir)

@@ -112,10 +112,10 @@ class NormalizeReturns:
         # var = returns.var()
         # mean = returns.mean()
         # ret = (returns - mean) / np.sqrt(var + eps)
-        # var = returns.var(axis=0)
-        # mean = returns.mean(axis=0)
-        # ret = (returns - mean) / np.sqrt(var + eps)
-        ret = returns
+        var = returns.var(axis=0)
+        mean = returns.mean(axis=0)
+        ret = (returns - mean) / np.sqrt(var + eps)
+        # ret = returns
         
         # Baseline. For max reward strategy
         # self.baseline = 0.99 * self.baseline + 0.01 * mean
@@ -126,7 +126,7 @@ class NormalizeReturns:
         
         # ret = returns - 14
         # print(max(ret))
-        trajectory["returns"] = ret
+        # trajectory["returns"] = ret
         # trajectory["returns"] = (returns - mean) / np.sqrt(var + eps)
         # pass
 
