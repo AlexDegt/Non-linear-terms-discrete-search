@@ -591,7 +591,7 @@ class MLPSepDelaySepStepStepID(nn.Module):
             hidden = nn.ModuleList()
             norms = nn.ModuleList()
             for j in range(hidden_delay_ind_num):
-                in_ch = state_dim + 2 if j == 0 else hidden_delay_ind_size
+                in_ch = state_dim + 1 if j == 0 else hidden_delay_ind_size
                 # in_ch = state_dim + 1 if j == 0 else hidden_delay_ind_size
                 out_ch = state_dim if j == hidden_delay_ind_num - 1 else hidden_delay_ind_size
                 hidden.append(nn.Linear(in_ch, out_ch, device=device))
@@ -607,7 +607,7 @@ class MLPSepDelaySepStepStepID(nn.Module):
             hidden = nn.ModuleList()
             norms = nn.ModuleList()
             for j in range(hidden_delay_step_num):
-                in_ch = state_dim + 2 if j == 0 else hidden_delay_step_size
+                in_ch = state_dim + 1 if j == 0 else hidden_delay_step_size
                 # in_ch = state_dim + 1 if j == 0 else hidden_delay_step_size
                 out_ch = delays_steps_num if j == hidden_delay_step_num - 1 else hidden_delay_step_size
                 hidden.append(nn.Linear(in_ch, out_ch, device=device))
@@ -632,8 +632,8 @@ class MLPSepDelaySepStepStepID(nn.Module):
         # step_emb = fourier_features(t=t_step, T=15, M=self.stepid_embed_size)
         # with torch.no_grad():
         #     step_emb = self.stepid_embed(t_step)
-        # x = torch.cat((x, t_step), dim=-1)
-        x = torch.cat((x, t_step, max_prefix), dim=-1)
+        x = torch.cat((x, t_step), dim=-1)
+        # x = torch.cat((x, t_step, max_prefix), dim=-1)
         # x = torch.cat((x, self.stepid_embed(t_step).squeeze(1)), dim=-1)
         policy = []
         # delay_range

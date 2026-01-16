@@ -205,7 +205,8 @@ class PolicyGradient:
         time_correction = 1 / (~mask).sum(dim=1)[:, None]
         # time_correction = 1
         # entropy = -1 * (torch.exp(log_policy) * log_policy * (~mask) * time_correction).sum() / (~mask).sum()
-        entropy = -1 * (torch.exp(log_policy) * log_policy * (~mask) * time_correction).sum() / (2 * delays2change_num * mask.shape[0])
+        # entropy = -1 * (torch.exp(log_policy) * log_policy * (~mask) * time_correction).sum() / (2 * delays2change_num * mask.shape[0])
+        entropy = -1 * (log_policy * (~mask) * time_correction).sum() / (2 * delays2change_num * mask.shape[0])
         # log_policy /= (2 * delays2change_num)
         # entropy += distr_ind.entropy().mean() + distr_step_ind.entropy().mean()
         self.explore_loss_list.append(entropy.item())
