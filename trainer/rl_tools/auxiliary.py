@@ -104,9 +104,9 @@ class NormalizeReturns:
         returns = trajectory["returns"].copy()
 
         # No baseline. For max reward strategy
-        # var = returns[:, 0].var()
-        # mean = returns[:, 0].mean()
-        # ret = (returns - mean) / np.sqrt(var + eps)
+        var = returns[:, 0].var()
+        mean = returns[:, 0].mean()
+        ret = (returns - mean) / np.sqrt(var + eps)
 
         # No baseline. For max inrement strategy
         # var = returns.var()
@@ -116,7 +116,7 @@ class NormalizeReturns:
         # var = returns.var(axis=0)
         # mean = returns.mean(axis=0)
         # ret = (returns - mean) / np.sqrt(var + eps)
-        ret = returns
+        # ret = returns
         
         # Baseline. For max reward strategy
         # self.baseline = 0.99 * self.baseline + 0.01 * mean
@@ -164,12 +164,12 @@ class TrainingTracker:
         self.summary_writer = summary_writer
         self.summary_writer_global_step = 0
 
-        self.log = pd.DataFrame(columns=['epoch', 'trajectory', 'state', 'action', 'reward', 'return'])
+        self.log = pd.DataFrame(columns=['epoch', 'trajectory', 'state', 'action', 'reward', 'return', 'aver', 'std'])
         for j in range(self.env.delays2change_num):
             self.log[f"ind {j}"] = None
             self.log[f"step {j}"] = None
 
-        self.log_best_traj = pd.DataFrame(columns=['epoch', 'trajectory', 'state', 'action', 'reward', 'return'])
+        self.log_best_traj = pd.DataFrame(columns=['epoch', 'trajectory', 'state', 'action', 'reward', 'return', 'aver', 'std'])
         for j in range(self.env.delays2change_num):
             self.log_best_traj[f"ind {j}"] = None
             self.log_best_traj[f"step {j}"] = None
@@ -222,8 +222,8 @@ class TrainingTracker:
             if curr_epoch % self.log_every_epochs == 0:
                 # Calcualte trajectory length
                 traj_len = len(trajectory["rewards"].flatten()) // self.traj_per_batch
-                if self.log_trajs[1] + 1 > self.traj_per_batch:
-                    self.log_trajs[1] = self.traj_per_batch - 1
+                if self.log_trajs[1] > self.traj_per_batch:
+                    self.log_trajs[1] = self.traj_per_batch
                 for j_traj in range(*self.log_trajs):
                     for j_obs in range(traj_len):
                         for j_d2ch in range(self.env.delays2change_num):
@@ -237,6 +237,8 @@ class TrainingTracker:
                                 'action': action,
                                 'reward': trajectory['rewards'].reshape(self.traj_per_batch, -1)[j_traj, j_obs],
                                 'return': trajectory['returns'].reshape(self.traj_per_batch, -1)[j_traj, j_obs],
+                                'aver': (np.max(trajectory['rewards'].reshape(self.traj_per_batch, -1), axis=1).mean()),
+                                'std': np.sqrt(np.max(trajectory['rewards'].reshape(self.traj_per_batch, -1), axis=1).var() + 1.e-5),
                                 f'ind {j_d2ch}': self.alg.distr_list[-1][j_d2ch][0].cpu().numpy().reshape(self.traj_per_batch, traj_len, -1)[j_traj, j_obs, :].tolist(),
                                 f'step {j_d2ch}': self.alg.distr_list[-1][j_d2ch][1].cpu().numpy().reshape(self.traj_per_batch, traj_len, -1)[j_traj, j_obs, :].tolist()
                             }
@@ -255,8 +257,8 @@ class TrainingTracker:
 
                 # Calcualte trajectory length
                 traj_len = len(trajectory["rewards"].flatten()) // self.traj_per_batch
-                if self.log_trajs[1] + 1 > self.traj_per_batch:
-                    self.log_trajs[1] = self.traj_per_batch - 1
+                if self.log_trajs[1] > self.traj_per_batch:
+                    self.log_trajs[1] = self.traj_per_batch
                 j_traj = ind_best
                 for j_obs in range(traj_len):
                     for j_d2ch in range(self.env.delays2change_num):
@@ -270,6 +272,8 @@ class TrainingTracker:
                             'action': action,
                             'reward': trajectory['rewards'].reshape(self.traj_per_batch, -1)[j_traj, j_obs],
                             'return': trajectory['returns'].reshape(self.traj_per_batch, -1)[j_traj, j_obs],
+                            'aver': (np.max(trajectory['rewards'].reshape(self.traj_per_batch, -1), axis=1).mean()),
+                            'std': np.sqrt(np.max(trajectory['rewards'].reshape(self.traj_per_batch, -1), axis=1).var() + 1.e-5),
                             f'ind {j_d2ch}': self.alg.distr_list[-1][j_d2ch][0].cpu().numpy().reshape(self.traj_per_batch, traj_len, -1)[j_traj, j_obs, :].tolist(),
                             f'step {j_d2ch}': self.alg.distr_list[-1][j_d2ch][1].cpu().numpy().reshape(self.traj_per_batch, traj_len, -1)[j_traj, j_obs, :].tolist()
                         }
