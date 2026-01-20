@@ -20,7 +20,7 @@ trial_descript: Training of 1D Chebyshev polynomial-based model
 # # trial_name: mlp_3x182_corr_entropy_inp_time_step_3e_4_norm_time
 # trial_name: mlp_3x182_corr_entropy_inp_time_step_3e_4_no_norm
 # trial_name: debug_max_rew_mlp_3x182_corr_entropy_inp_time_step_3e_4_norm_time
-trial_name: debug_max_rew_mlp_small_batch_10k_epochs
+trial_name: debug_max_rew_mlp_small_batch_10k_epochs_eps_1e_8
 # trial_name: max_rew_mlp_3x256_corr_entropy_inp_time_step_3e_4_no_norm_entropy_0
 # trial_name: mlp_3x182_corr_entropy_inp_time_step_3e_4_no_norm
 # trial_name: max_prefix_clip_grad_1_step_3e_4_norm_time

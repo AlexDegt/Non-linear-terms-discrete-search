@@ -98,7 +98,7 @@ class NormalizeReturns:
     def __init__(self, beta=0.0):
         self.beta = beta
         self.baseline = 0
-    def __call__(self, trajectory, mask=None, eps=1e-5):
+    def __call__(self, trajectory, mask=None, eps=1e-8):
         # returns = np.asarray(trajectory["returns"]).flatten()
         # returns = np.asarray(trajectory["returns"])
         returns = trajectory["returns"].copy()
@@ -238,7 +238,7 @@ class TrainingTracker:
                                 'reward': trajectory['rewards'].reshape(self.traj_per_batch, -1)[j_traj, j_obs],
                                 'return': trajectory['returns'].reshape(self.traj_per_batch, -1)[j_traj, j_obs],
                                 'aver': (np.max(trajectory['rewards'].reshape(self.traj_per_batch, -1), axis=1).mean()),
-                                'std': np.sqrt(np.max(trajectory['rewards'].reshape(self.traj_per_batch, -1), axis=1).var() + 1.e-5),
+                                'std': np.sqrt(np.max(trajectory['rewards'].reshape(self.traj_per_batch, -1), axis=1).var() + 1.e-8),
                                 f'ind {j_d2ch}': self.alg.distr_list[-1][j_d2ch][0].cpu().numpy().reshape(self.traj_per_batch, traj_len, -1)[j_traj, j_obs, :].tolist(),
                                 f'step {j_d2ch}': self.alg.distr_list[-1][j_d2ch][1].cpu().numpy().reshape(self.traj_per_batch, traj_len, -1)[j_traj, j_obs, :].tolist()
                             }
@@ -273,7 +273,7 @@ class TrainingTracker:
                             'reward': trajectory['rewards'].reshape(self.traj_per_batch, -1)[j_traj, j_obs],
                             'return': trajectory['returns'].reshape(self.traj_per_batch, -1)[j_traj, j_obs],
                             'aver': (np.max(trajectory['rewards'].reshape(self.traj_per_batch, -1), axis=1).mean()),
-                            'std': np.sqrt(np.max(trajectory['rewards'].reshape(self.traj_per_batch, -1), axis=1).var() + 1.e-5),
+                            'std': np.sqrt(np.max(trajectory['rewards'].reshape(self.traj_per_batch, -1), axis=1).var() + 1.e-8),
                             f'ind {j_d2ch}': self.alg.distr_list[-1][j_d2ch][0].cpu().numpy().reshape(self.traj_per_batch, traj_len, -1)[j_traj, j_obs, :].tolist(),
                             f'step {j_d2ch}': self.alg.distr_list[-1][j_d2ch][1].cpu().numpy().reshape(self.traj_per_batch, traj_len, -1)[j_traj, j_obs, :].tolist()
                         }
