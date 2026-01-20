@@ -695,12 +695,17 @@ class TrajectorySamplerMemory:
                 mask_state = np.concatenate((mask[..., None], mask[..., None], mask[..., None]), axis=-1)
                 for key, val in self.trajectory.items():
                     if key != 'state':
-                        if key == "actions" or key == "log_probs":
+                        # Don`t mask observations and actions to log them
+                        if key == "log_probs":
                             self.trajectory[key] = np.ma.array(self.trajectory[key], mask=mask_action, dtype=self.trajectory[key].dtype)
-                        elif key == "observations":
-                            self.trajectory[key] = np.ma.array(self.trajectory[key], mask=mask_state, dtype=self.trajectory[key].dtype)
-                        else:
+                        elif key != "actions" and key != "observations":
                             self.trajectory[key] = np.ma.array(self.trajectory[key], mask=mask, dtype=self.trajectory[key].dtype)
+                        # if key == "actions" or key == "log_probs":
+                        #     self.trajectory[key] = np.ma.array(self.trajectory[key], mask=mask_action, dtype=self.trajectory[key].dtype)
+                        # elif key == "observations":
+                        #     self.trajectory[key] = np.ma.array(self.trajectory[key], mask=mask_state, dtype=self.trajectory[key].dtype)
+                        # else:
+                        #     self.trajectory[key] = np.ma.array(self.trajectory[key], mask=mask, dtype=self.trajectory[key].dtype)
                 self.trajectory['mask'] = mask
             else:
                 self.trajectory['mask'] = np.zeros_like(self.trajectory['rewards'], dtype=int)

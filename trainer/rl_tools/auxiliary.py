@@ -95,10 +95,11 @@ class NormalizeAdvantages:
 
 class NormalizeReturns:
     """ Normalizes cumulative returns to have zero mean and variance 1. """
-    def __init__(self, beta=0.0):
+    def __init__(self, beta=0.0, eps=1e-8):
         self.beta = beta
         self.baseline = 0
-    def __call__(self, trajectory, mask=None, eps=1e-8):
+        self.eps = eps
+    def __call__(self, trajectory, mask=None):
         # returns = np.asarray(trajectory["returns"]).flatten()
         # returns = np.asarray(trajectory["returns"])
         returns = trajectory["returns"].copy()
@@ -106,7 +107,7 @@ class NormalizeReturns:
         # No baseline. For max reward strategy
         var = returns[:, 0].var()
         mean = returns[:, 0].mean()
-        ret = (returns - mean) / np.sqrt(var + eps)
+        ret = (returns - mean) / np.sqrt(var + self.eps)
 
         # No baseline. For max inrement strategy
         # var = returns.var()
@@ -150,13 +151,14 @@ class TrainingTracker:
         log_every_epochs (int): logs are saved every log_every_epochs epochs.
         log_trajs (list): trajectory indices range to log states and actions.
     """
-    def __init__(self, env, alg, traj_per_batch, log_every_epochs: int, log_trajs: list, save_path=None, alg_type='ppo', summary_writer=None):
+    def __init__(self, env, alg, traj_per_batch, log_every_epochs: int, log_trajs: list, save_path=None, alg_type='ppo', summary_writer=None, var_eps=1e-12):
         
         self.env = env
         self.alg = alg
         self.alg_type = alg_type
         self.save_path = save_path
         self.traj_per_batch = traj_per_batch
+        self.var_eps = var_eps
 
         self.log_every_epochs = log_every_epochs
         self.log_trajs = log_trajs
@@ -164,12 +166,12 @@ class TrainingTracker:
         self.summary_writer = summary_writer
         self.summary_writer_global_step = 0
 
-        self.log = pd.DataFrame(columns=['epoch', 'trajectory', 'state', 'action', 'reward', 'return', 'aver', 'std'])
+        self.log = pd.DataFrame(columns=['epoch', 'trajectory', 'state', 'action', 'reward', 'return', 'aver', 'max_rew_aver', 'std'])
         for j in range(self.env.delays2change_num):
             self.log[f"ind {j}"] = None
             self.log[f"step {j}"] = None
 
-        self.log_best_traj = pd.DataFrame(columns=['epoch', 'trajectory', 'state', 'action', 'reward', 'return', 'aver', 'std'])
+        self.log_best_traj = pd.DataFrame(columns=['epoch', 'trajectory', 'state', 'action', 'reward', 'return', 'aver', 'max_rew_aver', 'std'])
         for j in range(self.env.delays2change_num):
             self.log_best_traj[f"ind {j}"] = None
             self.log_best_traj[f"step {j}"] = None
@@ -237,8 +239,9 @@ class TrainingTracker:
                                 'action': action,
                                 'reward': trajectory['rewards'].reshape(self.traj_per_batch, -1)[j_traj, j_obs],
                                 'return': trajectory['returns'].reshape(self.traj_per_batch, -1)[j_traj, j_obs],
-                                'aver': (np.max(trajectory['rewards'].reshape(self.traj_per_batch, -1), axis=1).mean()),
-                                'std': np.sqrt(np.max(trajectory['rewards'].reshape(self.traj_per_batch, -1), axis=1).var() + 1.e-8),
+                                'aver': np.max(trajectory['rewards'].reshape(self.traj_per_batch, -1), axis=1).mean(),
+                                'max_rew_aver': np.max(trajectory['rewards'].reshape(self.traj_per_batch, -1), axis=1)[j_traj] - np.max(trajectory['rewards'].reshape(self.traj_per_batch, -1), axis=1).mean(),
+                                'std': np.sqrt(np.max(trajectory['rewards'].reshape(self.traj_per_batch, -1), axis=1).var() + self.var_eps),
                                 f'ind {j_d2ch}': self.alg.distr_list[-1][j_d2ch][0].cpu().numpy().reshape(self.traj_per_batch, traj_len, -1)[j_traj, j_obs, :].tolist(),
                                 f'step {j_d2ch}': self.alg.distr_list[-1][j_d2ch][1].cpu().numpy().reshape(self.traj_per_batch, traj_len, -1)[j_traj, j_obs, :].tolist()
                             }
@@ -273,7 +276,8 @@ class TrainingTracker:
                             'reward': trajectory['rewards'].reshape(self.traj_per_batch, -1)[j_traj, j_obs],
                             'return': trajectory['returns'].reshape(self.traj_per_batch, -1)[j_traj, j_obs],
                             'aver': (np.max(trajectory['rewards'].reshape(self.traj_per_batch, -1), axis=1).mean()),
-                            'std': np.sqrt(np.max(trajectory['rewards'].reshape(self.traj_per_batch, -1), axis=1).var() + 1.e-8),
+                            'max_rew_aver': np.max(trajectory['rewards'].reshape(self.traj_per_batch, -1), axis=1)[j_traj] - np.max(trajectory['rewards'].reshape(self.traj_per_batch, -1), axis=1).mean(),
+                            'std': np.sqrt(np.max(trajectory['rewards'].reshape(self.traj_per_batch, -1), axis=1).var() + self.var_eps),
                             f'ind {j_d2ch}': self.alg.distr_list[-1][j_d2ch][0].cpu().numpy().reshape(self.traj_per_batch, traj_len, -1)[j_traj, j_obs, :].tolist(),
                             f'step {j_d2ch}': self.alg.distr_list[-1][j_d2ch][1].cpu().numpy().reshape(self.traj_per_batch, traj_len, -1)[j_traj, j_obs, :].tolist()
                         }

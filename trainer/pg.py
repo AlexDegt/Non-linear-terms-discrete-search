@@ -116,6 +116,8 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
     traj_per_batch = config["traj_per_batch"]
     mask_max = config["mask_max"]
 
+    var_eps = config["var_eps"]
+
     # Define parameters of agent
     state_dim = len(model.delays[0]) * len(model.delays)
     delays_steps_num = 2 * max_delay_step# + 1
@@ -162,7 +164,7 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
         # Use default EnvRunner for memory agent!
         runner = EnvRunner(env, policy, num_runner_steps, transforms=runner_transforms)
 
-        sampler_transforms = [NormalizeReturns()]
+        sampler_transforms = [NormalizeReturns(eps=var_eps)]
         # sampler_transforms = []
         # sampler = TrajectorySampler(runner, num_epochs=num_epochs, 
         #                 num_minibatches=num_minibatches,
@@ -203,7 +205,7 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
     alg_type = 'pg'
     log_every_epochs = config["log_every_epochs"]
     log_trajs = config["log_trajs"]
-    tracker = TrainingTracker(env, pg, traj_per_batch, log_every_epochs, log_trajs, save_path, alg_type, summary_writer)
+    tracker = TrainingTracker(env, pg, traj_per_batch, log_every_epochs, log_trajs, save_path, alg_type, summary_writer, var_eps)
     
     for epoch in range(epochs):
         t_epoch_start = time.time()
