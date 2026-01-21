@@ -95,10 +95,11 @@ class NormalizeAdvantages:
 
 class NormalizeReturns:
     """ Normalizes cumulative returns to have zero mean and variance 1. """
-    def __init__(self, beta=0.0, eps=1e-8):
+    def __init__(self, beta=0.0, eps=1e-8, alpha_ret=0.):
         self.beta = beta
         self.baseline = 0
         self.eps = eps
+        self.alpha_ret = alpha_ret  
     def __call__(self, trajectory, mask=None):
         # returns = np.asarray(trajectory["returns"]).flatten()
         # returns = np.asarray(trajectory["returns"])
@@ -107,8 +108,9 @@ class NormalizeReturns:
         # No baseline. For max reward strategy
         var = returns[:, 0].var()
         mean = returns[:, 0].mean()
-        ret = (returns - mean) / np.sqrt(var + self.eps)
+        # ret = ((1 + self.alpha_ret) * returns - mean) / np.sqrt(var + self.eps)
 
+        ret = (1 + self.alpha_ret) * returns - mean
         # No baseline. For max inrement strategy
         # var = returns.var()
         # mean = returns.mean()

@@ -117,6 +117,7 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
     mask_max = config["mask_max"]
 
     var_eps = config["var_eps"]
+    alpha_ret = config["alpha_ret"]
 
     # Define parameters of agent
     state_dim = len(model.delays[0]) * len(model.delays)
@@ -164,7 +165,7 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
         # Use default EnvRunner for memory agent!
         runner = EnvRunner(env, policy, num_runner_steps, transforms=runner_transforms)
 
-        sampler_transforms = [NormalizeReturns(eps=var_eps)]
+        sampler_transforms = [NormalizeReturns(eps=var_eps, alpha_ret=alpha_ret)]
         # sampler_transforms = []
         # sampler = TrajectorySampler(runner, num_epochs=num_epochs, 
         #                 num_minibatches=num_minibatches,
