@@ -1,0 +1,94 @@
+1. Compare MLP with shared back and separate back for index and step heads:
+   Folder easy_simulation
+   Start point [2, 2, 2]
+   Simuations for comparison:
+    1) run_2026_01_22_18h08m40s_traj_10_batch_200_max_rew_mlp_2x32_step_1e_1 (623 param.)
+       run_2026_02_05_17h57m02s_traj_10_batch_200_max_rew_mlp_2x32_step_1e_1_track_oracle
+       run_2026_01_23_17h28m32s_shared_back_traj_10_batch_200_shared_1x32_sep_1_step_1e_1
+    2) run_2026_01_22_22h24m54s_traj_10_batch_200_max_rew_mlp_2x16_step_1e_1 (319 param.)
+       run_2026_02_05_17h52m52s_traj_10_batch_200_max_rew_mlp_2x16_step_1e_1_track_oracle
+       run_2026_01_23_17h27m55s_shared_back_traj_10_batch_200_shared_1x16_sep_1_step_1e_1
+    Concusions: 
+    1) separate-heads converges slightly faster, but not critically.
+    2) shared-back incudes less parameters
+2. Simulations on variable stepsize (step >= 1):
+   Start point [10, -10, 10]
+   a, b: folder range_m10_10_compare_mlp_1_hidden
+   c: folder range_m10_10
+   a. Firstly, let`s find appropriate hidden layer size for max_step=1 MLP, 
+      simulations:
+        run_2026_01_26_15h04m35s_start_10_m10_10_max_step_1_traj_60_batch_200_shared_1x128_sep_1_step_1e_2
+        run_2026_01_26_15h05m12s_start_10_m10_10_max_step_1_traj_60_batch_200_shared_1x256_sep_1_step_1e_2
+        run_2026_01_26_15h07m54s_start_10_m10_10_max_step_1_traj_60_batch_200_shared_1x512_sep_1_step_1e_2
+      hidden=128 stucked for some time
+      hidden=512 converges too long, also stucked
+      hidden=256 - optimal
+    b. Let`s find appropriate learning rate for shared-back hidden=256:
+         run_2026_01_26_15h05m12s_start_10_m10_10_max_step_1_traj_60_batch_200_shared_1x256_sep_1_step_1e_2
+         run_2026_01_27_11h29m24s_start_10_m10_10_max_step_1_traj_60_batch_200_shared_1x256_sep_1_step_3e_2
+         run_2026_01_27_11h30m32s_start_10_m10_10_max_step_1_traj_60_batch_200_shared_1x256_sep_1_step_1e_1
+       lr=1e-1, 3e-2 - stuck, too fast.
+       lr=1e-2 - ok.
+    c. Now let`s compare different max_step_size: 1, 3, 6:
+         run_2026_01_26_15h05m12s_start_10_m10_10_max_step_1_traj_60_batch_200_shared_1x256_sep_1_step_1e_2
+         run_2026_01_27_13h02m12s_start_10_m10_10_max_step_3_traj_60_batch_200_shared_1x256_sep_1_step_1e_2
+         run_2026_01_27_13h02m58s_start_10_m10_10_max_step_6_traj_60_batch_200_shared_1x256_sep_1_step_1e_2
+       max_step_size=1: 3191 oracle calls
+       max_step_size=3: 7580 oracle calls
+       max_step_size=6: 8663 oracle calls
+       The guess is that higher max_step_size - more environment research
+       is required to train strategy (every action):
+            max_step_size=1: (3 delays * 2 possible steps) ** (traj_len=60) ~ 10 ** 47 trajectories
+            max_step_size=3: (3 delays * 6 possible steps) ** (traj_len=60) ~ 10 ** 75 trajectories
+            max_step_size=6: (3 delays * 12 possible steps) ** (traj_len=60) ~ 10 ** 93 trajectories
+       max_step_size=1 -- lowest number of oracle calls.
+3. Change start point. Compare:
+   [10, -10, 10], [7, -7, 7], [3, -3, 3], [0, 0, 0]
+   1) learning rate=1e-2:
+        run_2026_01_26_15h05m12s_start_10_m10_10_max_step_1_traj_60_batch_200_shared_1x256_sep_1_step_1e_2
+        run_2026_01_28_11h00m55s_start_7_m7_7_max_step_1_traj_60_batch_200_shared_1x256_sep_1_step_1e_2
+        run_2026_01_28_11h02m39s_start_3_m3_3_max_step_1_traj_60_batch_200_shared_1x256_sep_1_step_1e_2
+        run_2026_01_28_11h04m25s_star_0_m0_0_max_step_1_traj_60_batch_200_shared_1x256_sep_1_step_1e_2
+   2) learning rate=3e-3:
+        run_2026_01_28_23h41m35s_star_10_m10_10_max_step_1_traj_60_batch_200_shared_1x256_sep_1_step_3e_3
+        run_2026_01_28_23h37m27s_star_7_m7_7_max_step_1_traj_60_batch_200_shared_1x256_sep_1_step_3e_3
+        run_2026_01_28_23h35m44s_star_3_m3_3_max_step_1_traj_60_batch_200_shared_1x256_sep_1_step_3e_3
+        run_2026_01_28_23h34m17s_star_0_m0_0_max_step_1_traj_60_batch_200_shared_1x256_sep_1_step_3e_3
+    In both cases agent stucks starting from [3, -3, 3] and
+    lowest number of oracle calls relates to start [0, 0, 0]
+    For [0, 0, 0] number of oracle calls is still high since trajectories and
+    batch size are huge, so we make small number of updates per high number of oracle calls.
+    
+    Important note: for [3, -3, 3] agent finds optimum [0, 0, -1] few times per training < 10.
+    We to store best trajectory in batch.
+   
+4. Compare implementation with simple and extended batch 
+   (extended by best trajectory found during training):
+   Folder range_m10_10_compare_mlp_1_hidden
+   Starting point [3, -3, 3]:
+        run_2026_01_28_23h35m44s_star_3_m3_3_max_step_1_traj_60_batch_200_shared_1x256_sep_1_step_3e_3
+        run_2026_02_05_19h15m27s_start_3_m3_3_max_step_1_traj_60_batch_200_shared_1x256_sep_1_step_3e_3_alpha_ret_1e_1_ext_batch_alpha_1e_0
+   Batch extension solves problem of rare optimum values.
+
+5. Small batch-size experiment:
+   Starting point [10, -10, 10]
+   Extend batch with trajectory with highest return. This trajectory return with weight=1
+   Then, return = (1 + alpha) * return - mean, alpha=0.1
+   Batch sizes: 200, 25:
+        run_2026_02_04_12h57m57s_start_10_m10_10_max_step_1_traj_60_batch_200_shared_1x256_sep_1_step_3e_3_alpha_ret_1e_1_ext_batch_alpha_1e_0
+        run_2026_02_05_09h17m34s_start_10_m10_10_max_step_1_traj_60_batch_25_shared_1x256_sep_1_step_3e_3_alpha_ret_1e_1_ext_batch_alpha_1e_0
+   Concusions:
+        average maximum reward is almost maximum: 25.749
+        Number of oracle calls for batch_size=25: 3342
+        Number of oracle calls for batch_size=200: 4292
+        BUT, agent which trains on batch_size=25 is not sure, 
+        policy entropy converges slower, because gradient noises are higher.
+
+        Important note: agent finds optimum [0, 0, -1] in shortest trajectory:
+        run_2026_02_04_12h57m57s_start_10_m10_10_max_step_1_traj_60_batch_200_shared_1x256_sep_1_step_3e_3_alpha_ret_1e_1_ext_batch_alpha_1e_0
+
+Further step:
+    Implement greedy RL with current agent, starting points [0, 0, 0].
+    Reference number of oracle calls: 200-400 per 1 nonlinear term.
+    Set OMP for 20 terms
+    Implement normal version of OMP with terms orthogonalization
