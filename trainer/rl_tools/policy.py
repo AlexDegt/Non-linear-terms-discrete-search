@@ -679,6 +679,129 @@ class MLPSepDelaySepStepStepID(nn.Module):
             params = [(name, p.data.size()) for name, p in self.named_parameters()]
             print(f"Agent parameters {params}")
 
+class MLPSharedBack(nn.Module):
+    """
+        MLP policy with shared back.
+        Model based on fully connected layers with LayerNorm.
+        Input is always (channels, length) without batch dimension.
+    """
+    def __init__(self, state_dim, delays2change_num, delays_steps_num,
+                 hidden_shared_size=32, hidden_shared_num=1,
+                 hidden_delay_ind_size=32, hidden_delay_ind_num=1,
+                 hidden_delay_step_size=32, hidden_delay_step_num=1,
+                 device='cuda'):
+        super().__init__()
+        self.device = device
+        self.state_dim = state_dim
+        self.delays2change_num = delays2change_num
+        self.delays_steps_num = delays_steps_num
+
+        # self.act = torch.nn.Tanh()
+        self.act = torch.nn.SiLU()
+
+        # Shared backbone
+        self.shared = nn.ModuleList()
+        self.shared_ln = nn.ModuleList()
+        for j in range(hidden_shared_num):
+            in_ch = state_dim + 1 if j == 0 else hidden_shared_size
+            out_ch = hidden_shared_size
+            self.shared.append(nn.Linear(in_ch, out_ch, device=device))
+            self.shared_ln.append(nn.LayerNorm(out_ch, elementwise_affine=True, device=device))
+
+        # Delays indices branch
+        self.delay_range = nn.ModuleList()
+        self.delay_range_ln = nn.ModuleList()
+        for _ in range(delays2change_num):
+            hidden = nn.ModuleList()
+            norms = nn.ModuleList()
+            for j in range(hidden_delay_ind_num):
+                in_ch = hidden_shared_size if j == 0 else hidden_delay_ind_size
+                out_ch = state_dim if j == hidden_delay_ind_num - 1 else hidden_delay_ind_size
+                hidden.append(nn.Linear(in_ch, out_ch, device=device))
+                if j != hidden_delay_ind_num - 1:
+                    norms.append(nn.LayerNorm(out_ch, elementwise_affine=True, device=device))
+            self.delay_range.append(hidden)
+            self.delay_range_ln.append(norms)
+
+        # Delays steps branch
+        self.delay_steps = nn.ModuleList()
+        self.delay_steps_ln = nn.ModuleList()
+        for _ in range(delays2change_num):
+            hidden = nn.ModuleList()
+            norms = nn.ModuleList()
+            for j in range(hidden_delay_step_num):
+                in_ch = hidden_shared_size if j == 0 else hidden_delay_step_size
+                out_ch = delays_steps_num if j == hidden_delay_step_num - 1 else hidden_delay_step_size
+                hidden.append(nn.Linear(in_ch, out_ch, device=device))
+                if j != hidden_delay_step_num - 1:
+                    norms.append(nn.LayerNorm(out_ch, elementwise_affine=True, device=device))
+            self.delay_steps.append(hidden)
+            self.delay_steps_ln.append(norms)
+
+        self.policy_out = [self.delay_range, self.delay_steps]
+
+    def forward(self, x):
+        # t_step: (batch_size, length, 1)
+        t_step = x["time"]
+        max_prefix = x["max_prefix"]
+        x = x["state"]
+        if x.dim() == 3 and t_step.dim() == 2:
+            t_step = t_step.unsqueeze(-1)
+        if x.dim() == 3 and max_prefix.dim() == 2:
+            max_prefix = max_prefix.unsqueeze(-1)
+        
+        x = torch.cat((x, t_step), dim=-1)
+
+        # shared back
+        for layer, norm in zip(self.shared, self.shared_ln):
+            x = layer(x)
+            x = norm(x)
+            x = self.act(x)
+
+        policy = []
+        # delay_range
+        for branch, norms in zip(self.delay_range, self.delay_range_ln):
+            x_policy = x.clone()
+            for j_hidden, layer in enumerate(branch):
+                if j_hidden != len(branch) - 1:
+                    x_policy = layer(x_policy)
+                    x_policy = norms[j_hidden](x_policy)
+                    x_policy = self.act(x_policy)
+                else:
+                    logits = layer(x_policy)
+            policy.append(torch.distributions.Categorical(logits=logits))
+
+        # delay_steps
+        for branch, norms in zip(self.delay_steps, self.delay_steps_ln):
+            x_policy = x.clone()
+            for j_hidden, layer in enumerate(branch):
+                if j_hidden != len(branch) - 1:
+                    x_policy = layer(x_policy)
+                    x_policy = norms[j_hidden](x_policy)
+                    x_policy = self.act(x_policy)
+                else:
+                    logits = layer(x_policy)
+            policy.append(torch.distributions.Categorical(logits=logits))
+
+        return policy
+
+    def count_parameters(self, trainable=False):
+        if trainable:
+            param_num = sum(p.numel() for p in self.parameters() if p.requires_grad)
+            print(f"Total agent trainable parameters number {param_num}")
+        else:
+            param_num = sum(p.numel() for p in self.parameters())
+            print(f"Total agent parameters number {param_num}")
+        return param_num
+
+    def enumerate_parameters(self, trainable=False):
+        if trainable:
+            params = [(name, p.data.size()) for name, p in self.named_parameters() if p.requires_grad]
+            print(f"Agent trainable parameters {params}")
+        else:
+            params = [(name, p.data.size()) for name, p in self.named_parameters()]
+            print(f"Agent parameters {params}")
+
 class LSTMShared(nn.Module):
     """
         Policy with shared LSTM for index and step heads. 

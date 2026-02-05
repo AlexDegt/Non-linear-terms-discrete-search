@@ -17,8 +17,8 @@ sys.path.append('../../')
 from utils import Timer
 from oracle import Oracle
 from .rl_tools import PerformanceEnv, NormalizeWrapper, TrajectoryNormalizeWrapper, EnvRunner, EnvRunnerMemory, TrajectorySampler_v1_1, TrajectorySampler, TrajectorySamplerMemory
-from .rl_tools import MLPSepDelayStep, MLPSepDelaySepStep, MLPSepDelaySepStepStepID, MLPConditionalStep, LSTMShared, PolicyActor, Policy_v1_3, PolicyMemory, PolicyMemoryMLP
-from .rl_tools import AccumReturn, AsArray, NormalizeReturns, TrainingTracker
+from .rl_tools import MLPSepDelayStep, MLPSepDelaySepStep, MLPSepDelaySepStepStepID, MLPConditionalStep, LSTMShared, MLPSharedBack, PolicyActor, Policy_v1_3, PolicyMemory, PolicyMemoryMLP
+from .rl_tools import AccumReturn, AsArray, NormalizeReturns, TrainingTracker, AddBestTraj
 from .rl_tools import PolicyGradient
 
 OptionalInt = Union[int, None]
@@ -118,6 +118,7 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
 
     var_eps = config["var_eps"]
     alpha_ret = config["alpha_ret"]
+    best_ret_ratio = config["best_ret_ratio"]
 
     # Define parameters of agent
     state_dim = len(model.delays[0]) * len(model.delays)
@@ -140,8 +141,13 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
     #                         hidden_delay_ind_size, hidden_delay_ind_num,
     #                         hidden_delay_step_size, hidden_delay_step_num,
     #                         model.device)
-    agent = MLPSepDelaySepStepStepID(state_dim, delays2change_num, delays_steps_num,
-                            num_runner_steps, stepid_embed_size,
+    # agent = MLPSepDelaySepStepStepID(state_dim, delays2change_num, delays_steps_num,
+    #                         num_runner_steps, stepid_embed_size,
+    #                         hidden_delay_ind_size, hidden_delay_ind_num,
+    #                         hidden_delay_step_size, hidden_delay_step_num,
+    #                         model.device)
+    agent = MLPSharedBack(state_dim, delays2change_num, delays_steps_num,
+                            hidden_shared_size, hidden_shared_num,
                             hidden_delay_ind_size, hidden_delay_ind_num,
                             hidden_delay_step_size, hidden_delay_step_num,
                             model.device)
@@ -165,7 +171,8 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
         # Use default EnvRunner for memory agent!
         runner = EnvRunner(env, policy, num_runner_steps, transforms=runner_transforms)
 
-        sampler_transforms = [NormalizeReturns(eps=var_eps, alpha_ret=alpha_ret)]
+        # sampler_transforms = [NormalizeReturns(eps=var_eps, alpha_ret=alpha_ret)]
+        sampler_transforms = [AddBestTraj(best_ret_ratio=best_ret_ratio), NormalizeReturns(eps=var_eps, alpha_ret=alpha_ret)]
         # sampler_transforms = []
         # sampler = TrajectorySampler(runner, num_epochs=num_epochs, 
         #                 num_minibatches=num_minibatches,
@@ -206,7 +213,7 @@ def train_pg(model: nn.Module, train_dataset: DataLoaderType, validate_dataset: 
     alg_type = 'pg'
     log_every_epochs = config["log_every_epochs"]
     log_trajs = config["log_trajs"]
-    tracker = TrainingTracker(env, pg, traj_per_batch, log_every_epochs, log_trajs, save_path, alg_type, summary_writer, var_eps)
+    tracker = TrainingTracker(env, pg, traj_per_batch + 1, log_every_epochs, log_trajs, save_path, alg_type, summary_writer, var_eps)
     
     for epoch in range(epochs):
         t_epoch_start = time.time()

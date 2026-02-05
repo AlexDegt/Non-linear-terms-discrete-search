@@ -134,6 +134,44 @@ class NormalizeReturns:
         # trajectory["returns"] = (returns - mean) / np.sqrt(var + eps)
         # pass
 
+class AddBestTraj:
+    """
+    Extends training batch with best rajectory ever found during training.
+    Trajectory is assumed the best now JUST in terms of return value.
+    """
+    def __init__(self, best_ret_ratio=0.):
+        self.best_ret_ratio = best_ret_ratio
+        self.traj_best = None
+    def __call__(self, trajectory):
+
+        traj_num = trajectory["returns"].shape[0]
+        ind_best_traj = np.argmax(trajectory["returns"][:, 0])
+        # alpha = traj_num * self.best_ret_ratio
+        alpha = self.best_ret_ratio
+
+        if self.traj_best == None:
+            self.traj_best = deepcopy(trajectory)
+            for k, v in filter(lambda kv: kv[0] != "state", trajectory.items()):
+                self.traj_best[k] = v[ind_best_traj:ind_best_traj + 1, ...]
+        
+        if trajectory["returns"][ind_best_traj, 0] > self.traj_best["returns"][0, 0]:
+
+            for k, v in filter(lambda kv: kv[0] != "state", trajectory.items()):
+                self.traj_best[k] = v[ind_best_traj:ind_best_traj + 1, ...]
+
+        for k, v in filter(lambda kv: kv[0] != "state", trajectory.items()):
+            if k != "returns":
+                trajectory[k] = np.concatenate((v, self.traj_best[k]), axis=0)
+            else:
+                trajectory[k] = np.concatenate((v, alpha * self.traj_best[k]), axis=0)
+            # print(f"key = {k}, shape = {trajectory[k].shape}")
+            # if k == "returns":
+            #    print(alpha, trajectory[k], self.traj_best[k], alpha * self.traj_best[k])
+            # print(f"I'm in AddBestTraj! best_ret_ratio={self.best_ret_ratio}")
+            # if k == "observations" or k == "actions" or k == "returns":
+            #    print(trajectory[k].shape)        
+        # sys.exit()
+
 class AsArray:
     """ 
     Converts lists of interactions to ndarray.
@@ -184,6 +222,7 @@ class TrainingTracker:
         self.rewards_max_mean = []
         self.rewards_max = []
         self.rewards_min = []
+        self.uniq_delay_num = []
         self.r2_score = [] # Coefficient of determination
         self.policy_entropy = []
         self.value_loss = []
@@ -201,6 +240,7 @@ class TrainingTracker:
         self.best_delays = []
         self.approx_kl_list = []
         self.clip_fraction_list = []
+        self.oracle_buffer_size = []
 
         self.min_min_index_max_reward_list = []
         self.mean_min_index_max_reward_list = []
@@ -297,6 +337,7 @@ class TrainingTracker:
             self.accum_rewards_mean(minibatch)
             self.accum_rewards_max_mean(minibatch)
             self.accum_entropy(minibatch)
+            self.accum_unique_states_num()
             self.accum_policy_loss(minibatch)
             self.accum_grad_norm()
             self.accum_best_perform(minibatch)
@@ -319,6 +360,18 @@ class TrainingTracker:
         # Flush TensorBoard summary writer
         if self.summary_writer_global_step % 10 == 0:
             self.summary_writer.flush()
+
+    def accum_unique_states_num(self,):
+        """ Accumulate number of unique states """
+        # Calculate size of buffer with unique states
+        oracle_buffer_len = len(self.env.oracle_buffer)
+        self.oracle_buffer_size.append(oracle_buffer_len)
+
+        if self.summary_writer is not None:
+            self.summary_writer.add_scalar("train/oracle_buffer_len", oracle_buffer_len, self.summary_writer_global_step)
+
+        if self.save_path is not None:
+            np.save(os.path.join(self.save_path, f"oracle_buffer_size.npy"), np.array(self.oracle_buffer_size))
 
     def accum_min_min_index_max_reward(self, minibatch):
         """ Calculates minimum index in batch of of minimum indices in trejectory of maximum reward among minibatch """
