@@ -32,7 +32,7 @@ block_size: 99840
 # Increase this parameter if you obtain out of memory error.
 chunk_num: 1
 dtype: complex128
-device: "cuda:6"
+device: "cuda:0"
 # dtype: complex64
 # Path to the folder with data
 data_path: '../../data/BlackBoxData_80_cut_norm_correct.mat'
@@ -86,7 +86,7 @@ mask_max: True
 gamma: 1.0 # discount. Used only if accum_return_mode == 'discount'
 # gamma: 0.8 # discount
 num_minibatches: 1 # Number of mini-batches to divide whole trajectory into
-total_epoch_num: 501 # Total number of epochs
+total_epoch_num: 1001 # Total number of epochs
 lr: 0.003 # Adam learning rate
 eps: 0.00000001 # Adam epsilon
 # Epsilon in returns batch normalization: (returns - mean) / sqrt(var + var_eps)
@@ -99,8 +99,9 @@ alpha_ret: 0.1
 best_ret_ratio: 1.0
 
 # Log parameters
-log_every_epochs: 100
-log_trajs: [0, 100] # Range, must be 2 values
+log_every_epochs: 50
+save_every_epochs: 100
+log_trajs: [0, 1000] # Range, must be 2 values
 
 # Policy Gradient training parameters
 explore_loss_coef: 0.0 # 0.001 weight of explore loss
